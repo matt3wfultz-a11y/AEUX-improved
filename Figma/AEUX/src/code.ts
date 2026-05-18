@@ -377,8 +377,8 @@ function nodeToObj (nodes) {
             }          
         }
         // sanitize layer name for After Effects compatibility
-        if (obj.name) {
-            obj.name = sanitizeLayerName(obj.name as string);
+        if ((obj as any).name) {
+            (obj as any).name = sanitizeLayerName((obj as any).name as string);
         }
 
         // keep track of Auto-layout frames for alignment of children

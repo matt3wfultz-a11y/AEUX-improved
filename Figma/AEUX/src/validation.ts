@@ -13,29 +13,29 @@ export interface ValidationResult {
     summary: string;
 }
 
-function countLayers(nodes: ReadonlyArray<SceneNode>): number {
+function countLayers(nodes: ReadonlyArray<any>): number {
     let count = 0;
     for (const node of nodes) {
         count++;
         if ('children' in node) {
-            count += countLayers((node as ChildrenMixin).children);
+            count += countLayers(node.children);
         }
     }
     return count;
 }
 
-function getMaxDepth(nodes: ReadonlyArray<SceneNode>, depth: number = 0): number {
+function getMaxDepth(nodes: ReadonlyArray<any>, depth: number = 0): number {
     let max = depth;
     for (const node of nodes) {
         if ('children' in node) {
-            const childMax = getMaxDepth((node as ChildrenMixin).children, depth + 1);
+            const childMax = getMaxDepth(node.children, depth + 1);
             if (childMax > max) max = childMax;
         }
     }
     return max;
 }
 
-function collectIssues(nodes: ReadonlyArray<SceneNode>, issues: ValidationIssue[]): void {
+function collectIssues(nodes: ReadonlyArray<any>, issues: ValidationIssue[]): void {
     for (const node of nodes) {
         if ((node.type === 'GROUP' || node.type === 'FRAME') &&
             'children' in node &&

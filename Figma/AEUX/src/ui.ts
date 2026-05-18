@@ -146,9 +146,9 @@ onmessage = (event) => {
         let imageList = [];
 
         msg.images.forEach(img => {
-            const filetype = fileType(img.bytes)
+            const filetype = (fileType as any)(img.bytes)
             // const blob = new Blob([img.bytes], { type: filetype.mime })
-            const name = img.name + '.' + filetype.ext
+            const name = img.name + '.' + (filetype && filetype.ext ? filetype.ext : 'png')
 
             imageList.push({
                 name, 
