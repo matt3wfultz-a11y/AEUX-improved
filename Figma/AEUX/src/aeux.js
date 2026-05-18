@@ -43,10 +43,10 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
         if (layer.visible === false) { return; }         // skip layer if hidden
         // console.log(layer.name, layer.type);
 
-        // detect * in layer names
-        if (layer.name && layer.name.charAt(0) == '*') {        // skip frames with *
-            let rasterizedLayer = getImageFill(layer, parentFrame)
-            rasterizedLayer.name = layer.name.replace(/^\*\s/, '').replace(/^\*/, '').replace(/:/g, '-').replace(/\s*(\/|\\)\s*/g, '-') // remove astrix
+        // detect * in layer names (legacy path – name not yet sanitized)
+        if (layer.name && layer.name.charAt(0) == '*') {
+            let rasterizedLayer = getImageFill(layer, parentFrame, true)
+            rasterizedLayer.name = layer.name.replace(/^\*\s/, '').replace(/^\*/, '').replace(/:/g, '-').replace(/\s*(\/|\\)\s*/g, '-')
             aeuxData.push(rasterizedLayer)
             rasterizeList.push(layer.id)
             return
@@ -54,27 +54,26 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
 
         if (layer.type == "GROUP") {
             if (layer.rasterize) {
-                let rasterizedLayer = getImageFill(layer, parentFrame)
+                let rasterizedLayer = getImageFill(layer, parentFrame, true)
                 rasterizedLayer.name = layer.name.replace(/^\*\s/, '').replace(/^\*/, '')
                 aeuxData.push(rasterizedLayer)
                 rasterizeList.push(layer.id)
                 return
             }
-            let prevMask = (aeuxData.length > 0) ? aeuxData[aeuxData.length - 1].isMask : false    // check if the previous layer is a mask
+            let prevMask = (aeuxData.length > 0) ? aeuxData[aeuxData.length - 1].isMask : false
             aeuxData.push(getGroup(layer, parentFrame, prevMask));
         }
-        // if (layer.fillGeometry && layer.fillGeometry.length > 1) { layer.type = "BOOLEAN_OPERATION" }         // overwrite the layer type
 
         if (layer.type == "BOOLEAN_OPERATION") {
             if (layer.rasterize) {
-                let rasterizedLayer = getImageFill(layer, parentFrame)
+                let rasterizedLayer = getImageFill(layer, parentFrame, true)
                 rasterizedLayer.name = layer.name.replace(/^\*\s/, '').replace(/^\*/, '')
                 aeuxData.push(rasterizedLayer)
                 rasterizeList.push(layer.id)
                 return
             }
             layer = getBoolean(layer, parentFrame, boolType);
-            if (layer) {        // skip if no layers in the compound
+            if (layer) {
                 aeuxData.push(layer);
             } else { return; }
         }
@@ -85,7 +84,7 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
             layer.type == "STAR" ||
             layer.type == "POLYGON") {
             if (layer.rasterize) {
-                let rasterizedLayer = getImageFill(layer, parentFrame)
+                let rasterizedLayer = getImageFill(layer, parentFrame, true)
                 rasterizedLayer.name = layer.name.replace(/^\*\s/, '').replace(/^\*/, '')
                 aeuxData.push(rasterizedLayer)
                 rasterizeList.push(layer.id)
@@ -94,23 +93,21 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
             aeuxData.push(getShape(layer, parentFrame, boolType));
             layerCount++;
         }
-        if (layer.type == "INSTANCE" || layer.type == "COMPONENT" || layer.type == "FRAME" || layer.type == "AUTOLAYOUT") {    // instances and master symbols
-            // console.log('SYMBOL');
-            if (layer.rasterize) {     // 
-                let rasterizedLayer = getImageFill(layer, parentFrame)
-                rasterizedLayer.name = layer.name.replace(/^\*\s/, '').replace(/^\*/, '') // remove astrix
+        if (layer.type == "INSTANCE" || layer.type == "COMPONENT" || layer.type == "FRAME" || layer.type == "AUTOLAYOUT") {
+            if (layer.rasterize) {
+                let rasterizedLayer = getImageFill(layer, parentFrame, true)
+                rasterizedLayer.name = layer.name.replace(/^\*\s/, '').replace(/^\*/, '')
                 aeuxData.push(rasterizedLayer)
                 rasterizeList.push(layer.id)
                 return
             }
-            
             if (layer.type == "FRAME" && parentFrame) { layer.type = "AUTOLAYOUT" }
             aeuxData.push(getComponent(layer, parentFrame));
             layerCount++;
         }
         if (layer.type == "TEXT") {
             if (layer.rasterize) {
-                let rasterizedLayer = getImageFill(layer, parentFrame)
+                let rasterizedLayer = getImageFill(layer, parentFrame, true)
                 rasterizedLayer.name = layer.name.replace(/^\*\s/, '').replace(/^\*/, '')
                 aeuxData.push(rasterizedLayer)
                 rasterizeList.push(layer.id)
@@ -811,8 +808,9 @@ function getFills(layer, parentFrame) {
     return fillData;
 }
 //// get layer data: IMAGE
-function getImageFill(layer, parentFrame) {
-    let frame = getFrame(layer, parentFrame, true)
+function getImageFill(layer, parentFrame, isRasterized) {
+    // for rasterized layers the PNG is the full visual – don't constrain to artboard bounds
+    let frame = getFrame(layer, parentFrame, !isRasterized)
     // console.log('frameSize', frame);
     
     // resize the image frame to fit within the frame because the exported image will be cropped
