@@ -757,6 +757,7 @@ var AEUX = (function () {
         var r = thisComp.layers.add(bmpImage);
         r.selected = false;
         r.name = layer.name;
+        returnMessage.push('DBG aeImage "' + layer.name + '": frame.x=' + layer.frame.x + ' frame.y=' + layer.frame.y + ' frame.w=' + layer.frame.width + ' frame.h=' + layer.frame.height + ' src.w=' + r.width + ' src.h=' + r.height);
         if (layer.guide) {
             r.guideLayer = true;
         }
