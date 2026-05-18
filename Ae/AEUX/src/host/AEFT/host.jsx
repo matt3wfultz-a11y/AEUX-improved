@@ -713,7 +713,6 @@ var AEUX = (function () {
         var nameId = (layer.name + '_' + layer.id)
             .replace(/[\\:"*?%<>|]/g, '-')
             .replace(/\s*(\/|\\)\s*/g, '-');
-        returnMessage.push('DEBUG: looking for ' + folderPath + '/' + nameId + '.png');
         var bmpImage = getItem(nameId, FileSource, imageFolder);
         if (bmpImage === null) {
             var fileFound = false;

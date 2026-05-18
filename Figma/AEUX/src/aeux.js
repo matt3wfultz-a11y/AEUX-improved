@@ -52,7 +52,14 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
             return
         }
 
-        if (layer.type == "GROUP") {            
+        if (layer.type == "GROUP") {
+            if (layer.rasterize) {
+                let rasterizedLayer = getImageFill(layer, parentFrame)
+                rasterizedLayer.name = layer.name.replace(/^\*\s/, '').replace(/^\*/, '')
+                aeuxData.push(rasterizedLayer)
+                rasterizeList.push(layer.id)
+                return
+            }
             let prevMask = (aeuxData.length > 0) ? aeuxData[aeuxData.length - 1].isMask : false    // check if the previous layer is a mask
             aeuxData.push(getGroup(layer, parentFrame, prevMask));
         }

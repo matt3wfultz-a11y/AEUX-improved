@@ -321,7 +321,8 @@ function nodeToObj (nodes) {
             console.log('rasterize', node);
             rasterizeList.push(node.id)
             rasterize = true
-        }        
+            obj['rasterize'] = true   // flag survives name sanitization
+        }
 
         for (const key in node) {
             try {
