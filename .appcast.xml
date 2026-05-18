@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>AEUX</title>
+    <link>https://raw.githubusercontent.com/google/sketch2ae/master/.appcast.xml</link>
+    <description>Transfer layers to After Effects</description>
+    <language>en</language>
+    <item>
+      <title>Version 0.8.2</title>
+      <description>
+          Image exporting failed on 83.
+      </description>
+      <enclosure url="https://github.com/google/sketch2ae/releases/download/v0.8.1-b/aeux.sketchplugin.zip" sparkle:version="0.8.1"/>
+    </item>
+    <item>
+      <title>Version 0.8.1</title>
+      <description>
+          Image exporting bug fix for newer versions of Sketch.
+      </description>
+      <enclosure url="https://github.com/google/sketch2ae/releases/download/v0.8.1/aeux.sketchplugin.zip" sparkle:version="0.8.1"/>
+    </item>
+    <item>
+      <title>Version 0.8.0</title>
+      <description>
+          Better image handling and shape gradient point opacity support. Download Ae panel updates at aeux.io.
+      </description>
+      <enclosure url="https://github.com/google/sketch2ae/releases/download/v0.8.0/aeux.sketchplugin.zip" sparkle:version="0.8.0"/>
+    </item>
+    <item>
+      <title>Version 0.7.8</title>
+      <description>
+          Image fill fixes; folder is undefined errors. Download Ae panel updates at aeux.io.
+      </description>
+      <enclosure url="https://github.com/google/sketch2ae/releases/download/v0.7.8/aeux.sketchplugin.zip" sparkle:version="0.7.8"/>
+    </item>
+    <item>
+      <title>Version 0.7.6</title>
+      <description>
+          Image fills supported again with stronger layer mask support. Download Ae panel updates at aeux.io.
+      </description>
+      <enclosure url="https://github.com/google/sketch2ae/releases/download/v0.7.6/aeux.sketchplugin.zip" sparkle:version="0.7.6"/>
+    </item>
+    <item>
+      <title>Version 0.7.5</title>
+      <description>
+          Catalina support, major speed and stability improvements. Download Ae panel updates at aeux.io.
+      </description>
+      <enclosure url="https://github.com/google/sketch2ae/releases/download/v0.7.5/aeux.sketchplugin.zip" sparkle:version="0.7.5"/>
+    </item>
+    <item>
+      <title>Version 0.6.9</title>
+      <description>
+          Stability, improved Ae un-precomp
+      </description>
+      <enclosure url="https://github.com/google/sketch2ae/releases/download/0.6.9/AEUX.sketchplugin.zip" sparkle:version="0.6.9"/>
+    </item>
+    <item>
+      <title>Version 0.6.8</title>
+      <description>
+          Sketch 54 support
+      </description>
+      <enclosure url="https://github.com/google/sketch2ae/releases/download/0.6.8/AEUX.sketchplugin.zip" sparkle:version="0.6.8"/>
+    </item>
+    <item>
+      <title>Version 0.6.7</title>
+      <description>
+          Initial release
+      </description>
+      <enclosure url="https://github.com/google/sketch2ae/releases/download/0.6.7/AEUX.sketchplugin.zip" sparkle:version="0.6.7"/>
+    </item>
+  </channel>
+</rss>

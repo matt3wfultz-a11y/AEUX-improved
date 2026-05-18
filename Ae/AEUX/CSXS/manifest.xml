@@ -1,0 +1,96 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ExtensionManifest 
+  Version="5.0" 
+  ExtensionBundleId="AEUX" 
+  ExtensionBundleVersion="0.8.2" 
+  ExtensionBundleName="AEUX" 
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ExtensionList>
+    <Extension Id="com.aeux.panel" Version="1.0.0" />
+    <Extension Id="com.aeux.server" Version="1.0.0" />
+  </ExtensionList>
+  <ExecutionEnvironment>
+    <HostList>
+      <Host Name="AEFT" Version="16.0" />
+    </HostList>
+    <LocaleList>
+      <Locale Code="All" />
+    </LocaleList>
+    <RequiredRuntimeList>
+      <RequiredRuntime Name="CSXS" Version="5.0" />
+    </RequiredRuntimeList>
+  </ExecutionEnvironment>
+  <DispatchInfoList>
+    <Extension Id="com.aeux.panel">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./dist/index.html</MainPath>
+          <!-- <MainPath>./public/index-dev.html</MainPath> -->
+          <CEFCommandLine>
+            <Parameter>--disable-features=SameSiteByDefaultCookies,CookiesWithoutSameSiteMustBeSecure,NetworkService</Parameter>
+            <Parameter>--disable-site-isolation-trials</Parameter>  
+            <Parameter>--enable-nodejs</Parameter>
+            <Parameter>--mixed-context</Parameter>
+          </CEFCommandLine>
+        </Resources>
+        <Lifecycle>
+          <AutoVisible>true</AutoVisible>
+        </Lifecycle>
+        <UI>
+          <Type>Panel</Type>
+          <Menu>AEUX</Menu>
+          <Geometry>
+            <Size>
+              <Height>400</Height>
+              <Width>280</Width>
+            </Size>
+            <MaxSize>
+              <Height>500</Height>
+              <Width>598</Width>
+            </MaxSize>
+            <MinSize>
+              <Height>300</Height>
+              <Width>260</Width>
+            </MinSize>
+          </Geometry>
+          <Icons>
+            <Icon Type="Normal">./img/Icon.png</Icon>
+            <Icon Type="RollOver">./img/Icon.png</Icon>
+            <Icon Type="DarkNormal">./img/Icon.png</Icon>
+            <Icon Type="DarkRollOver">./img/Icon.png</Icon>
+          </Icons>
+        </UI>
+      </DispatchInfo>
+    </Extension>
+
+    <Extension Id="com.aeux.server">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./dist/index.html</MainPath>
+          <!-- <MainPath>./public/index-dev.html</MainPath> -->
+          <ScriptPath>./src/host/AEFT/host.jsx</ScriptPath>
+          <CEFCommandLine>
+            <Parameter>--enable-nodejs</Parameter>
+            <Parameter>--mixed-context</Parameter>
+          </CEFCommandLine>
+        </Resources>
+        <Lifecycle>
+					<AutoVisible>false</AutoVisible>
+					<StartOn>
+						<Event>com.adobe.csxs.events.ApplicationInitialized</Event>
+						<Event>applicationActivate</Event>
+					</StartOn>
+				</Lifecycle>
+				<UI>
+					<Type>Custom</Type>
+					<Geometry>
+						<Size>
+							<Height>240</Height>
+							<Width>240</Width>
+						</Size>
+					</Geometry>
+				</UI>
+      </DispatchInfo>
+    </Extension>
+  </DispatchInfoList>
+</ExtensionManifest>

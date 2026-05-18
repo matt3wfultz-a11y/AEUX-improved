@@ -1,0 +1,69 @@
+{
+  "name": "aeux",
+  "version": "0.8.2",
+  "private": true,
+  "scripts": {
+    "serve": "vue-cli-service serve",
+    "build": "vue-cli-service build",
+    "lint": "vue-cli-service lint",
+    "sign": "bombino-cmd sign",
+    "switch": "bombino-cmd switch",
+    "update": "bombino-cmd update",
+    "register": "bombino-cmd register",
+    "help": "bombino-cmd help",
+    "package": "bombino-cmd package"
+  },
+  "dependencies": {
+    "@mdi/font": "^4.9.95",
+    "amulets": "^0.3.1",
+    "brutalism": "^2.3.2",
+    "cep-spy": "latest",
+    "core-js": "^3.6.5",
+    "express": "^4.17.1",
+    "hammerjs": "^2.0.8",
+    "starlette": "^1.0.4",
+    "vue": "^2.6.11",
+    "ws": "^6.2.2"
+  },
+  "devDependencies": {
+    "@vue/cli-plugin-babel": "^4.4.6",
+    "@vue/cli-plugin-eslint": "^4.4.6",
+    "@vue/cli-service": "^4.4.6",
+    "babel-eslint": "^10.1.0",
+    "bombino-commands": "^1.1.1",
+    "boxen": "^4.2.0",
+    "chalk": "^2.4.2",
+    "eslint": "^5.16.0",
+    "eslint-plugin-vue": "^5.0.0",
+    "fs-extra": "^8.1.0",
+    "inquirer": "^7.3.0",
+    "make-runnable": "^1.3.6",
+    "ora": "^4.0.4",
+    "shelljs": "^0.8.5",
+    "types-for-adobe": "github:pravdomil/types-for-adobe",
+    "vue-template-compiler": "^2.6.11"
+  },
+  "eslintConfig": {
+    "root": true,
+    "env": {
+      "node": true
+    },
+    "extends": [
+      "plugin:vue/essential",
+      "eslint:recommended"
+    ],
+    "rules": {},
+    "parserOptions": {
+      "parser": "babel-eslint"
+    }
+  },
+  "postcss": {
+    "plugins": {
+      "autoprefixer": {}
+    }
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions"
+  ]
+}
