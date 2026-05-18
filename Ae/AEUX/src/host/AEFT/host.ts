@@ -1,3 +1,4 @@
+if (typeof console === 'undefined') { var console = { log: function() {}, error: function() {}, warn: function() {} }; }
 console.log('Host is online');
 
 var AEUX = (function () {	/// this is the publicObject for the script
