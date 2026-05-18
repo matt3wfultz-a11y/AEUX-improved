@@ -66,6 +66,13 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
         // if (layer.fillGeometry && layer.fillGeometry.length > 1) { layer.type = "BOOLEAN_OPERATION" }         // overwrite the layer type
 
         if (layer.type == "BOOLEAN_OPERATION") {
+            if (layer.rasterize) {
+                let rasterizedLayer = getImageFill(layer, parentFrame)
+                rasterizedLayer.name = layer.name.replace(/^\*\s/, '').replace(/^\*/, '')
+                aeuxData.push(rasterizedLayer)
+                rasterizeList.push(layer.id)
+                return
+            }
             layer = getBoolean(layer, parentFrame, boolType);
             if (layer) {        // skip if no layers in the compound
                 aeuxData.push(layer);
@@ -77,7 +84,14 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
             layer.type == "LINE" ||
             layer.type == "STAR" ||
             layer.type == "POLYGON") {
-              aeuxData.push(getShape(layer, parentFrame, boolType));
+            if (layer.rasterize) {
+                let rasterizedLayer = getImageFill(layer, parentFrame)
+                rasterizedLayer.name = layer.name.replace(/^\*\s/, '').replace(/^\*/, '')
+                aeuxData.push(rasterizedLayer)
+                rasterizeList.push(layer.id)
+                return
+            }
+            aeuxData.push(getShape(layer, parentFrame, boolType));
             layerCount++;
         }
         if (layer.type == "INSTANCE" || layer.type == "COMPONENT" || layer.type == "FRAME" || layer.type == "AUTOLAYOUT") {    // instances and master symbols
@@ -95,6 +109,13 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
             layerCount++;
         }
         if (layer.type == "TEXT") {
+            if (layer.rasterize) {
+                let rasterizedLayer = getImageFill(layer, parentFrame)
+                rasterizedLayer.name = layer.name.replace(/^\*\s/, '').replace(/^\*/, '')
+                aeuxData.push(rasterizedLayer)
+                rasterizeList.push(layer.id)
+                return
+            }
             aeuxData.push(getText(layer, parentFrame));
             layerCount++;
         }
