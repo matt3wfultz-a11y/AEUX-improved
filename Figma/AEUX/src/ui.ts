@@ -1,4 +1,3 @@
-import * as fileType from 'file-type'
 import Vue from 'vue/dist/vue.esm.js'
 import * as aeux from './aeux.js'
 import { saveAs } from 'file-saver';
@@ -146,9 +145,7 @@ onmessage = (event) => {
         let imageList = [];
 
         msg.images.forEach(img => {
-            const filetype = (fileType as any)(img.bytes)
-            // const blob = new Blob([img.bytes], { type: filetype.mime })
-            const name = img.name + '.' + (filetype && filetype.ext ? filetype.ext : 'png')
+            const name = img.name + '.png'
 
             imageList.push({
                 name, 
