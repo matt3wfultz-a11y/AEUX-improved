@@ -1098,7 +1098,9 @@ function aeImage(layer, opt_parent) {
     // alert(layer.path + layer.id + '.jpg')
 
     // check if file is already imported
-    var nameId = `${layer.name}_${layer.id}`
+    var nameId = (layer.name + '_' + layer.id)
+        .replace(/[\\:"*?%<>|]/g, '-')
+        .replace(/\s*(\/|\\)\s*/g, '-');
     // var nameId = (hostApp == 'Figma') ? `${layer.name}_${layer.id}` : layer.id
     var bmpImage = getItem(nameId, FileSource, imageFolder);
     // if not imported

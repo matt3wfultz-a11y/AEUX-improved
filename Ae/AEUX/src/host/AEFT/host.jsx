@@ -710,7 +710,9 @@ var AEUX = (function () {
         frameFolder.parentFolder = aeuxFolder;
         var imageFolder = createNamedFolder('Images', frameFolder);
         imageFolder.parentFolder = frameFolder;
-        var nameId = "".concat(layer.name, "_").concat(layer.id);
+        var nameId = (layer.name + '_' + layer.id)
+            .replace(/[\\:"*?%<>|]/g, '-')
+            .replace(/\s*(\/|\\)\s*/g, '-');
         var bmpImage = getItem(nameId, FileSource, imageFolder);
         if (bmpImage === null) {
             var fileFound = false;
