@@ -43,7 +43,17 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
         if (layer.visible === false) { return; }         // skip layer if hidden
         // console.log(layer.name, layer.type);
 
-        // detect * in layer names (legacy path – name not yet sanitized)
+        // * prefix layers – code.ts sets type='RASTERIZE' after the property loop
+        if (layer.type == 'RASTERIZE') {
+            let rasterizedLayer = getImageFill(layer, parentFrame, true)
+            rasterizedLayer.name = layer.name
+            aeuxData.push(rasterizedLayer)
+            rasterizeList.push(layer.id)
+            console.log('rasterized layer', rasterizedLayer)
+            return
+        }
+
+        // legacy: * in name not yet sanitized (shouldn't occur in normal flow)
         if (layer.name && layer.name.charAt(0) == '*') {
             let rasterizedLayer = getImageFill(layer, parentFrame, true)
             rasterizedLayer.name = layer.name.replace(/^\*\s/, '').replace(/^\*/, '').replace(/:/g, '-').replace(/\s*(\/|\\)\s*/g, '-')

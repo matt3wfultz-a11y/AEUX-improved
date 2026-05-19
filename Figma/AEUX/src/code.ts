@@ -321,7 +321,6 @@ function nodeToObj (nodes) {
             console.log('rasterize', node);
             rasterizeList.push(node.id)
             rasterize = true
-            obj['rasterize'] = true   // flag survives name sanitization
         }
 
         for (const key in node) {
@@ -382,8 +381,12 @@ function nodeToObj (nodes) {
             (obj as any).name = sanitizeLayerName((obj as any).name as string);
         }
 
-        // keep track of Auto-layout frames for alignment of children
-        if (node.type === 'FRAME' && node.layoutMode !== 'NONE') { obj.type = 'AUTOLAYOUT'}
+        // set type AFTER the loop so nothing can overwrite it
+        if (rasterize) {
+            obj.type = 'RASTERIZE';
+        } else if (node.type === 'FRAME' && node.layoutMode !== 'NONE') {
+            obj.type = 'AUTOLAYOUT';
+        }
 
         return obj;
     }
