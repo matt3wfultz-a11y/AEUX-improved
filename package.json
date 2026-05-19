@@ -4,7 +4,10 @@
   "description": "Transfer Sketch and Figma layers to After Effects",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build:ae": "cd Ae/AEUX && npm install && npm run build",
+    "build:figma": "cd Figma/AEUX && npm install && npm run build",
+    "build": "npm run build:ae && npm run build:figma",
+    "package": "bash package.sh"
   },
   "repository": {
     "type": "git",
