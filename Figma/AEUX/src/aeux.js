@@ -41,7 +41,7 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
         if (!opt_parentFrame) { boolOffset = null }
 
         if (layer.visible === false) { return; }         // skip layer if hidden
-        // console.log(layer.name, layer.type);
+        console.log('LAYER TYPE CHECK:', layer.name, layer.type);
 
         // * prefix layers – code.ts sets type='RASTERIZE' after the property loop
         if (layer.type == 'RASTERIZE') {
