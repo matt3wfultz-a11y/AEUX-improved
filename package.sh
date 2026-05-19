@@ -5,6 +5,9 @@
 
 set -e
 
+# Webpack 4 uses a legacy OpenSSL hash that Node 17+ removed; this re-enables it.
+export NODE_OPTIONS=--openssl-legacy-provider
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERSION=$(node -p "require('$SCRIPT_DIR/Ae/AEUX/package.json').version" 2>/dev/null || echo "0.0.0")
 OUT_DIR="$SCRIPT_DIR/.package-build"
