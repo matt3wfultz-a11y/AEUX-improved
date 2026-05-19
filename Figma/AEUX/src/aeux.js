@@ -41,7 +41,7 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
         if (!opt_parentFrame) { boolOffset = null }
 
         if (layer.visible === false) { return; }         // skip layer if hidden
-        console.log('LAYER TYPE CHECK:', layer.name, layer.type);
+        // console.log(layer.name, layer.type);
 
         // * prefix layers – code.ts sets type='RASTERIZE' after the property loop
         if (layer.type == 'RASTERIZE') {
@@ -823,14 +823,17 @@ function getImageFill(layer, parentFrame, isRasterized) {
     let frame = getFrame(layer, parentFrame, !isRasterized)
     // console.log('frameSize', frame);
     
-    // resize the image frame to fit within the frame because the exported image will be cropped
-    if (frame.width > frameSize[0]) {
-        frame.width = frameSize[0]
-        frame.x = frameSize[0] / 2
-    }
-    if (frame.height > frameSize[1]) {
-        frame.height = frameSize[1]
-        frame.y = frameSize[1] / 2
+    // for image fills, resize to fit artboard (the exported image is cropped to artboard)
+    // for rasterized layers the PNG is the full visual, so skip this clipping
+    if (!isRasterized) {
+        if (frame.width > frameSize[0]) {
+            frame.width = frameSize[0]
+            frame.x = frameSize[0] / 2
+        }
+        if (frame.height > frameSize[1]) {
+            frame.height = frameSize[1]
+            frame.y = frameSize[1] / 2
+        }
     }
     
     
