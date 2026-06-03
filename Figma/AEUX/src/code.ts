@@ -99,18 +99,8 @@ figma.ui.onmessage = message => {
             parentFrame = findFrame(figma.currentPage.selection[0])
             let parentFrameName = parentFrame.name.replace(/\s*(\/|\\)\s*/g, '-').replace(/^\*\s/, '').replace(/^\*/, '')
 
-            // group and mask
-            let mask = figma.createRectangle()
-            mask.x = parentFrame.x
-            mask.y = parentFrame.y
-            mask.resize(parentFrame.width, parentFrame.height)
-            tempGroup = figma.group([mask], mask.parent)
-            tempGroup.appendChild(parentFrame)
-            mask.isMask = true
-
             rasterizeList.push(parentFrame.id)
 
-            
             refImg = {
                 type: 'Image',
                 name: parentFrameName,
@@ -119,7 +109,7 @@ figma.ui.onmessage = message => {
                 isVisible: true,
                 opacity: 50,
                 blendMode: 'BlendingMode.NORMAL',
-                isMask: false, 
+                isMask: false,
                 rotation: 0,
                 guide: true,
             }
@@ -140,13 +130,6 @@ figma.ui.onmessage = message => {
 
             Promise.all(requests)
             .then(() => storeImageData(imageHashList, shapeTree, refImg))
-            .then(() => {
-                // remove the reference mask
-                if (tempGroup) {
-                    tempGroup.parent.appendChild(parentFrame)
-                    tempGroup.remove()
-                }
-            })
                 
 
         } else {
