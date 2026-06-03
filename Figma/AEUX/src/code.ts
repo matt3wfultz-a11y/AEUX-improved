@@ -167,49 +167,73 @@ figma.ui.onmessage = message => {
 
         function asyncCollectHashes(id, cb) {
             setTimeout(() => {
-                // console.log('done with', item);
                 let shape = (figma.getNodeById(id) as any)
 
-                // disable effects
-                let effectVisList = []      // to store the effect visibility
-                let effects
-                if (shape.effects) {
-                    effects = clone(shape.effects)
-                    effects.forEach(effect => {         // turn them all off
-                        effectVisList.push(effect.visible)
-                        if (effect.type == 'DROP_SHADOW' || effect.type == 'LAYER_BLUR') {
-                            effect.visible = false
+                let compMult = 3
+                let imgScale = Math.min(3500 / Math.max(shape.width, shape.height), compMult)
+
+                // TEXT nodes require fonts loaded before any write (effects) or exportAsync
+                let fontPromise: Promise<any> = Promise.resolve()
+                if (shape.type === 'TEXT') {
+                    try {
+                        const fn = shape.fontName
+                        if (fn !== figma.mixed) {
+                            fontPromise = figma.loadFontAsync(fn as FontName)
+                        } else {
+                            const fonts: FontName[] = []
+                            for (let i = 0; i < (shape.characters as string).length; i++) {
+                                const rfn = shape.getRangeFontName(i, i + 1)
+                                if (rfn !== figma.mixed) {
+                                    const f = rfn as FontName
+                                    if (!fonts.some(x => x.family === f.family && x.style === f.style)) {
+                                        fonts.push(f)
+                                    }
+                                }
+                            }
+                            fontPromise = Promise.all(fonts.map(f => figma.loadFontAsync(f))).then(() => {})
                         }
-                    })
-                    shape.effects = effects
+                    } catch (e) { /* continue without font load */ }
                 }
 
-                let compMult = 3
-                let imgScale = Math.min(3500 / Math.max(shape.width, shape.height), compMult)  // limit it to 4000px
-                // console.log('IMAGESCALE', imgScale, shape);
-
-                shape.exportAsync({
-                    format: "PNG",
-                    useAbsoluteBounds: true,
-                    constraint: { type: "SCALE", value: imgScale }
-                })
-                .then(img => {
-                    imageHashList.push({
-                        hash: figma.createImage(img).hash,
-                        id: `${shape.name.replace(/^\*\s/, '').replace(/^\*/, '')}_${id}`
-                    })
-                })
-                .then(() => {                    
-                    // re-enable effects 
-                    for (let i = 0; i < effectVisList.length; i++) {
-                        effects[i].visible = effectVisList[i]
-                    }
-                    shape.effects = effects
-                })
+                fontPromise
+                .catch(() => {})
                 .then(() => {
-                    cb();
-                })
+                    // disable effects
+                    let effectVisList = []
+                    let effects
+                    if (shape.effects) {
+                        effects = clone(shape.effects)
+                        effects.forEach(effect => {
+                            effectVisList.push(effect.visible)
+                            if (effect.type == 'DROP_SHADOW' || effect.type == 'LAYER_BLUR') {
+                                effect.visible = false
+                            }
+                        })
+                        try { shape.effects = effects } catch (e) {}
+                    }
 
+                    return shape.exportAsync({
+                        format: "PNG",
+                        useAbsoluteBounds: true,
+                        constraint: { type: "SCALE", value: imgScale }
+                    })
+                    .then(img => {
+                        imageHashList.push({
+                            hash: figma.createImage(img).hash,
+                            id: `${shape.name.replace(/^\*\s/, '').replace(/^\*/, '')}_${id}`
+                        })
+                    })
+                    .then(() => {
+                        // re-enable effects
+                        if (effects) {
+                            for (let i = 0; i < effectVisList.length; i++) {
+                                effects[i].visible = effectVisList[i]
+                            }
+                            try { shape.effects = effects } catch (e) {}
+                        }
+                    })
+                    .then(() => { cb() })
+                })
 
             }, 100);
         }
