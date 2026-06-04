@@ -38,6 +38,17 @@ var vm = new Vue({
         addRasterizeFlag () {
             parent.postMessage({ pluginMessage: { type: 'addRasterizeFlag' } }, '*')
         },
+        sendRefImageOnly () {
+            if (!this.thinking) {
+                this.thinking = 'fetchAEUX'
+                setTimeout(() => {
+                    parent.postMessage({ pluginMessage: { type: 'sendRefImageOnly' } }, '*')
+                    this.btnMsg = 'Sending reference image'
+                }, 250);
+            } else {
+                this.thinking = null
+            }
+        },
         // detachComponents () {
         //     parent.postMessage({ pluginMessage: { type: 'detachComponents' } }, '*')
         // },
