@@ -151,6 +151,7 @@ figma.ui.onmessage = message => {
         function asyncCollectHashes(id, cb) {
             setTimeout(() => {
                 let shape = (figma.getNodeById(id) as any)
+                if (!shape) { cb(); return; }
 
                 let compMult = 3
                 let imgScale = Math.min(3500 / Math.max(shape.width, shape.height), compMult)
@@ -160,9 +161,9 @@ figma.ui.onmessage = message => {
                 if (shape.type === 'TEXT') {
                     try {
                         const fn = shape.fontName
-                        if (fn !== figma.mixed) {
+                        if (fn !== figma.mixed && fn != null && typeof (fn as any).family === 'string') {
                             fontPromise = figma.loadFontAsync(fn as FontName)
-                        } else {
+                        } else if (fn === figma.mixed) {
                             const fonts: FontName[] = []
                             for (let i = 0; i < (shape.characters as string).length; i++) {
                                 const rfn = shape.getRangeFontName(i, i + 1)
