@@ -144,85 +144,8 @@ figma.ui.onmessage = message => {
         }
         // console.log('imageHashList', imageHashList);
 
-        function clone(val) {
-            return JSON.parse(JSON.stringify(val))
-        }
-
-        function asyncCollectHashes(id, cb) {
-            setTimeout(() => {
-                let shape = (figma.getNodeById(id) as any)
-                if (!shape) { cb(); return; }
-
-                let compMult = 3
-                let imgScale = Math.min(3500 / Math.max(shape.width, shape.height), compMult)
-
-                // TEXT nodes require fonts loaded before any write (effects) or exportAsync
-                let fontPromise: Promise<any> = Promise.resolve()
-                if (shape.type === 'TEXT') {
-                    try {
-                        const fn = shape.fontName
-                        if (fn !== figma.mixed && fn != null && typeof (fn as any).family === 'string') {
-                            fontPromise = figma.loadFontAsync(fn as FontName)
-                        } else if (fn === figma.mixed) {
-                            const fonts: FontName[] = []
-                            for (let i = 0; i < (shape.characters as string).length; i++) {
-                                const rfn = shape.getRangeFontName(i, i + 1)
-                                if (rfn !== figma.mixed) {
-                                    const f = rfn as FontName
-                                    if (!fonts.some(x => x.family === f.family && x.style === f.style)) {
-                                        fonts.push(f)
-                                    }
-                                }
-                            }
-                            fontPromise = Promise.all(fonts.map(f => figma.loadFontAsync(f))).then(() => {})
-                        }
-                    } catch (e) { /* continue without font load */ }
-                }
-
-                fontPromise
-                .catch(() => {})
-                .then(() => {
-                    // disable effects
-                    let effectVisList = []
-                    let effects
-                    if (shape.effects) {
-                        effects = clone(shape.effects)
-                        effects.forEach(effect => {
-                            effectVisList.push(effect.visible)
-                            if (effect.type == 'DROP_SHADOW' || effect.type == 'LAYER_BLUR') {
-                                effect.visible = false
-                            }
-                        })
-                        try { shape.effects = effects } catch (e) {}
-                    }
-
-                    return shape.exportAsync({
-                        format: "PNG",
-                        useAbsoluteBounds: true,
-                        constraint: { type: "SCALE", value: imgScale }
-                    })
-                    .then(img => {
-                        imageHashList.push({
-                            hash: figma.createImage(img).hash,
-                            id: `${shape.name.replace(/^\*\s/, '').replace(/^\*/, '')}_${id}`
-                        })
-                    })
-                    .then(() => {
-                        // re-enable effects
-                        if (effects) {
-                            for (let i = 0; i < effectVisList.length; i++) {
-                                effects[i].visible = effectVisList[i]
-                            }
-                            try { shape.effects = effects } catch (e) {}
-                        }
-                    })
-                    .then(() => { cb() })
-                })
-
-            }, 100);
-        }
     }
-  
+
     if (message.type === 'addRasterizeFlag') {
         if (figma.currentPage.selection.length < 1) { return }      // nothing selected
 
@@ -263,8 +186,137 @@ figma.ui.onmessage = message => {
     //     figma.ui.postMessage({type: 'footerMsg', action: 'flattened', layerCount});
     // }
 
+    if (message.type === 'sendRefImageOnly') {
+        if (figma.currentPage.selection.length < 1) {
+            figma.ui.postMessage({ type: 'fetchAEUX', data: null });
+            return;
+        }
+
+        shapeTree = []
+        imageHashList = []
+        imageBytesList = []
+        rasterizeList = []
+        hasFrameData = false
+
+        let parentFrame = findFrame(figma.currentPage.selection[0])
+        let parentFrameName = parentFrame.name.replace(/\s*(\/|\\)\s*/g, '-').replace(/^\*\s/, '').replace(/^\*/, '')
+
+        rasterizeList.push(parentFrame.id)
+
+        let frameObj: any = {
+            type: 'FRAME',
+            name: parentFrameName,
+            id: parentFrame.id,
+            frame: { x: 0, y: 0, width: parentFrame.width, height: parentFrame.height },
+            children: [],
+            isVisible: true,
+            opacity: 100,
+            blendMode: 'BlendingMode.NORMAL',
+            isMask: false,
+            rotation: 0,
+        }
+        shapeTree.push(frameObj)
+
+        let refImg = {
+            type: 'Image',
+            name: parentFrameName,
+            id: parentFrame.id.replace(/:/g, '-'),
+            frame: { x: parentFrame.width / 2, y: parentFrame.height / 2, width: parentFrame.width, height: parentFrame.height },
+            isVisible: true,
+            opacity: 50,
+            blendMode: 'BlendingMode.NORMAL',
+            isMask: false,
+            rotation: 0,
+            guide: true,
+        }
+
+        let requests = rasterizeList.map((item) => {
+            return new Promise((resolve) => {
+                asyncCollectHashes(item, resolve);
+            });
+        })
+
+        Promise.all(requests)
+        .then(() => storeImageData(imageHashList, shapeTree, refImg))
+    }
+
 	//Communicate back to the UI
 	// console.log('send message back to ui');
+}
+
+function clone(val) {
+    return JSON.parse(JSON.stringify(val))
+}
+
+function asyncCollectHashes(id, cb) {
+    setTimeout(() => {
+        let shape = (figma.getNodeById(id) as any)
+        if (!shape) { cb(); return; }
+
+        let compMult = 3
+        let imgScale = Math.min(3500 / Math.max(shape.width, shape.height), compMult)
+
+        let fontPromise: Promise<any> = Promise.resolve()
+        if (shape.type === 'TEXT') {
+            try {
+                const fn = shape.fontName
+                if (fn !== figma.mixed && fn != null && typeof (fn as any).family === 'string') {
+                    fontPromise = figma.loadFontAsync(fn as FontName)
+                } else if (fn === figma.mixed) {
+                    const fonts: FontName[] = []
+                    for (let i = 0; i < (shape.characters as string).length; i++) {
+                        const rfn = shape.getRangeFontName(i, i + 1)
+                        if (rfn !== figma.mixed) {
+                            const f = rfn as FontName
+                            if (!fonts.some(x => x.family === f.family && x.style === f.style)) {
+                                fonts.push(f)
+                            }
+                        }
+                    }
+                    fontPromise = Promise.all(fonts.map(f => figma.loadFontAsync(f))).then(() => {})
+                }
+            } catch (e) { /* continue without font load */ }
+        }
+
+        fontPromise
+        .catch(() => {})
+        .then(() => {
+            let effectVisList = []
+            let effects
+            if (shape.effects) {
+                effects = clone(shape.effects)
+                effects.forEach(effect => {
+                    effectVisList.push(effect.visible)
+                    if (effect.type == 'DROP_SHADOW' || effect.type == 'LAYER_BLUR') {
+                        effect.visible = false
+                    }
+                })
+                try { shape.effects = effects } catch (e) {}
+            }
+
+            return shape.exportAsync({
+                format: "PNG",
+                useAbsoluteBounds: true,
+                constraint: { type: "SCALE", value: imgScale }
+            })
+            .then(img => {
+                imageHashList.push({
+                    hash: figma.createImage(img).hash,
+                    id: `${shape.name.replace(/^\*\s/, '').replace(/^\*/, '')}_${id}`
+                })
+            })
+            .then(() => {
+                if (effects) {
+                    for (let i = 0; i < effectVisList.length; i++) {
+                        effects[i].visible = effectVisList[i]
+                    }
+                    try { shape.effects = effects } catch (e) {}
+                }
+            })
+            .then(() => { cb() })
+        })
+
+    }, 100);
 }
 
 function nodeToObj (nodes) {
