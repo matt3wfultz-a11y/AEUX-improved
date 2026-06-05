@@ -47,7 +47,7 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
         // * prefix layers – code.ts sets type='RASTERIZE' after the property loop
         if (layer.type == 'RASTERIZE') {
             let rasterizedLayer = getImageFill(layer, parentFrame, true)
-            rasterizedLayer.name = sanitizeName(layer.name)
+            rasterizedLayer.name = sanitizeName(layer.name.replace(/^\*\s/, '').replace(/^\*/, ''))
             aeuxData.push(rasterizedLayer)
             rasterizeList.push(layer.id)
             console.log('rasterized layer', rasterizedLayer)
