@@ -282,7 +282,7 @@ function getText(layer, parentFrame) {
         }
     }
     function getTextProps(layer) {        
-        var text = layer.characters.replace(/[\u2028]/g, '\n');        
+        var text = layer.characters.replace(/[\u2028\u2029]/g, '\n');
         // var transformVal = 0;
         // var transformVal = layer.sketchObject.styleAttributes()["MSAttributedStringTextTransformAttribute"];
 
