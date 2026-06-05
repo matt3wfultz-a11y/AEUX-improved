@@ -3,6 +3,7 @@ import { extractLinearGradientParamsFromTransform, extractRadialOrDiamondGradien
 import * as triclops from './triclops.js'
 
 var versionNumber = 0.81;
+function sanitizeName(name) { return name ? name.replace(/\u2028|\u2029/g, ' ') : name; }
 var frameData, layers, hasArtboard, layerCount, layerData, boolOffset, rasterizeList, frameSize;
 export function convert (data) {
     hasArtboard = false;
@@ -46,7 +47,7 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
         // * prefix layers – code.ts sets type='RASTERIZE' after the property loop
         if (layer.type == 'RASTERIZE') {
             let rasterizedLayer = getImageFill(layer, parentFrame, true)
-            rasterizedLayer.name = layer.name
+            rasterizedLayer.name = sanitizeName(layer.name)
             aeuxData.push(rasterizedLayer)
             rasterizeList.push(layer.id)
             console.log('rasterized layer', rasterizedLayer)
@@ -159,7 +160,7 @@ function getShape(layer, parentFrame, boolType) {
 
 	var layerData =  {
         type: layerType,
-		name: layer.name,
+		name: sanitizeName(layer.name),
 		id: layer.id,
 		frame: frame,
         fill: getFills(layer, parentFrame),
@@ -342,7 +343,7 @@ function getGroup(layer, parentFrame, isMasked) {
     
 	var layerData =  {
         type: isMasked ? 'Component' : 'Group',
-		name: '\u25BD ' + layer.name,
+		name: '▽ ' + sanitizeName(layer.name),
 		id: layer.id,
 		frame: calcFrame,
         isVisible: (layer.visible !== false),
@@ -381,7 +382,7 @@ function getComponent(layer, parentFrame) {
 
 	var layerData =  {
         type: 'Component',
-        name: layer.name,
+        name: sanitizeName(layer.name),
         masterId: layer.componentId,
         id: layer.id,
         frame: calcFrame,
@@ -495,7 +496,7 @@ function getBoolean(layer, parentFrame, boolType, isMultipath) {
     
 	var layerData =  {
         type: 'CompoundShape',
-		name: layer.name,
+		name: sanitizeName(layer.name),
 		id: layer.id,
         frame: frame,
         fill: getFills(layer, parentFrame),
@@ -566,7 +567,7 @@ function getCompoundPaths(paths, layer) {
     //     // var flip = getFlipMultiplier(layer);
         layerList.push({
             type: 'Path',
-            name: layer.name,
+            name: sanitizeName(layer.name),
     		id: null,
     		frame: {
                 width: 100,
