@@ -448,6 +448,7 @@ function getComponent(layer, parentFrame) {
                     if (override.symbolOverride) {
                         if (currentLayer.id == override.path) {      // do ids match?
                             var overrideSymbol = document.getComponentMasterWithID(override.value);
+                            if (overrideSymbol == null) { continue }
                             currentLayer.name = overrideSymbol.name;
                             currentLayer.masterId = overrideSymbol.id;
                             currentLayer.layers = filterTypes( overrideSymbol );
