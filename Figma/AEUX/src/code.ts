@@ -97,6 +97,7 @@ figma.ui.onmessage = message => {
         let refImg = null, tempGroup, parentFrame
         if (prefs.exportRefImage) {         // include a reference image with transfer
             parentFrame = findFrame(figma.currentPage.selection[0])
+            if (!parentFrame) return
             let parentFrameName = parentFrame.name.replace(/\s*(\/|\\)\s*/g, '-').replace(/^\*\s/, '').replace(/^\*/, '')
 
             rasterizeList.push(parentFrame.id)
@@ -199,6 +200,7 @@ figma.ui.onmessage = message => {
         hasFrameData = false
 
         let parentFrame = findFrame(figma.currentPage.selection[0])
+        if (!parentFrame) return
         let parentFrameName = parentFrame.name.replace(/\s*(\/|\\)\s*/g, '-').replace(/^\*\s/, '').replace(/^\*/, '')
 
         rasterizeList.push(parentFrame.id)
