@@ -511,7 +511,8 @@ function findFrame(node) {
                 return node;
             }
         } catch (error) {
-            figma.ui.postMessage({ type: 'footerMsg', action: 'Error in findFrame() 😖', layerCount: null });
+            figma.ui.postMessage({ type: 'footerMsg', action: 'Selection must be inside a frame', layerCount: null });
+            return null;
         }
 }
 function addMagicStar(selection, layerCount) {
