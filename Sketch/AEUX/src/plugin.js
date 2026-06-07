@@ -621,7 +621,7 @@ function getSymbol(layer) {
                     if (override.symbolOverride) {
                         if (currentLayer.id == override.path) {      // do ids match?
                             var overrideSymbol = document.getSymbolMasterWithID(override.value);
-                            if (overrideSymbol == undefined) { return }
+                            if (overrideSymbol == null) { continue }
                             currentLayer.name = overrideSymbol.name;
                             currentLayer.masterId = overrideSymbol.id;
                             currentLayer.layers = filterTypes( overrideSymbol );
