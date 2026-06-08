@@ -1578,6 +1578,23 @@ var AEUX = (function () {
             alert(e.toString() + "\nError on line: " + e.line.toString());
         }
     }
+    function buildPalette(paletteData) {
+        if (!setComp()) return;
+        app.beginUndoGroup('Build color palette');
+        var palette = paletteData.palette;
+        for (var i = 0; i < palette.length; i++) {
+            var c = palette[i].color;
+            var hexName = '#' + toHex(c[0]) + toHex(c[1]) + toHex(c[2]);
+            var solidLayer = thisComp.layers.addSolid([c[0], c[1], c[2]], hexName, 100, 100, 1);
+            solidLayer.label = 3;
+        }
+        app.endUndoGroup();
+        return { count: palette.length };
+    }
+    function toHex(v) {
+        var h = Math.round(v * 255).toString(16);
+        return h.length === 1 ? '0' + h : h;
+    }
     function createSwatch(swatchData) {
         if (!setComp()) return;
         app.beginUndoGroup('Create swatch');
@@ -1614,6 +1631,9 @@ var AEUX = (function () {
         },
         createSwatch: function (swatchData) {
             return createSwatch(swatchData);
+        },
+        buildPalette: function (paletteData) {
+            return buildPalette(paletteData);
         },
         toggleGroupVisibility: function () {
             toggleGroupVisibility();

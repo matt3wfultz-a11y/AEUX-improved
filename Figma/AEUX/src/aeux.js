@@ -17,9 +17,14 @@ export function convert (data) {
     var layerData = filterTypes(data);
     layerData[0].layerCount = layerCount;
     layerData[0].rasterizeList = rasterizeList;
-    layerData[0].colorPalette = Object.values(colorPaletteMap);
 
     return layerData;
+}
+
+export function extractPalette(data) {
+    colorPaletteMap = {}
+    filterTypes(data)
+    return Object.values(colorPaletteMap);
 }
 
 function collectColor(color) {

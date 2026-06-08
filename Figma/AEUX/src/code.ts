@@ -147,6 +147,26 @@ figma.ui.onmessage = message => {
 
     }
 
+    if (message.type === 'exportPalette') {
+        if (figma.currentPage.selection.length < 1) {
+            figma.ui.postMessage({ type: 'paletteFetched', data: null });
+            return;
+        }
+        shapeTree = []
+        hasFrameData = false
+        try {
+            let selection = nodeToObj(figma.currentPage.selection)
+            if (shapeTree[0].children.length < 1) {
+                shapeTree[0].children = selection
+            }
+        } catch (error) {
+            figma.ui.postMessage({ type: 'footerMsg', action: 'Layers must be inside of a frame', layerCount: null });
+            return;
+        }
+        figma.ui.postMessage({ type: 'paletteFetched', data: shapeTree });
+        return;
+    }
+
     if (message.type === 'addRasterizeFlag') {
         if (figma.currentPage.selection.length < 1) { return }      // nothing selected
 

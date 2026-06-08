@@ -1,5 +1,6 @@
 import Vue from 'vue/dist/vue.esm.js'
 import * as aeux from './aeux.js'
+const aeuxModule = aeux as any
 import { saveAs } from 'file-saver';
 import './ui.css'
 var vm = new Vue({
@@ -37,6 +38,17 @@ var vm = new Vue({
         },
         addRasterizeFlag () {
             parent.postMessage({ pluginMessage: { type: 'addRasterizeFlag' } }, '*')
+        },
+        exportPalette () {
+            if (!this.thinking) {
+                this.thinking = 'fetchAEUX'
+                setTimeout(() => {
+                    parent.postMessage({ pluginMessage: { type: 'exportPalette' } }, '*')
+                    this.btnMsg = 'Sending palette'
+                }, 250)
+            } else {
+                this.thinking = null
+            }
         },
         sendRefImageOnly () {
             if (!this.thinking) {
@@ -234,6 +246,33 @@ onmessage = (event) => {
         //     vm.thinking = false
         // };
     }
+    if (msg && msg.type === 'paletteFetched') {
+        if (!msg.data) {
+            setFooterMsg(null, 'Select layers first');
+            return
+        }
+        const palette = aeuxModule.extractPalette(msg.data[0])
+        if (!palette.length) {
+            setFooterMsg(null, 'No solid fill colors found');
+            return
+        }
+        fetch(`http://127.0.0.1:7240/evalScript`, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                method: 'buildPalette',
+                data: { palette },
+                switch: 'aftereffects',
+            })
+        })
+        .then(response => {
+            if (response.ok) return response.json()
+            throw Error('failed to connect')
+        })
+        .then(() => setFooterMsg(null, `${palette.length} color${palette.length === 1 ? '' : 's'} sent to Ae`))
+        .catch(() => setFooterMsg(null, 'Failed to connect to Ae'))
+    }
+
     if (msg && msg.type === 'footerMsg') {
         setFooterMsg(msg.layerCount, msg.action);
     }

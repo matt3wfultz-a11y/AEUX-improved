@@ -222,9 +222,6 @@ export default {
             amulets.evalScript(msg, data)
         },
         buildLayers (layerData) {
-            if (layerData && layerData[0] && layerData[0].colorPalette) {
-                this.colorPalette = layerData[0].colorPalette
-            }
             amulets.evalScript('buildLayers', {layerData})
         },
         swatchCss(color) {
