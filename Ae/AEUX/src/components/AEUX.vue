@@ -179,7 +179,8 @@
                 />
             </div>
             <div v-if="colorPalette.length" class="swatch-hint">Click a swatch to apply color to selected layer</div>
-            <div v-else class="swatch-empty">No palette loaded yet.<br>Export from Figma to populate.</div>
+            <div v-else class="swatch-empty">No palette loaded yet.<br>Send from Figma then click Sync.</div>
+            <button class="sync-btn" @click="syncPalette">⟳ Sync from Figma</button>
         </div>
 
         <Footer :footerMessage.sync="footerMessage" />
@@ -251,10 +252,24 @@ export default {
         applyColor(swatch) {
             amulets.evalScript('applySwatchColor', { color: swatch.color })
         },
-        receivePalette(palette) {
-            if (palette && palette.length) {
-                this.colorPalette = palette
-            }
+        syncPalette() {
+            fetch('http://127.0.0.1:7240/evalScript', {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ method: 'getPendingPalette', switch: 'aftereffects' })
+            })
+            .then(r => r.json())
+            .then(result => {
+                const raw = typeof result === 'string' ? result : JSON.stringify(result)
+                if (!raw || raw === 'null') return
+                try {
+                    const palette = JSON.parse(raw)
+                    if (Array.isArray(palette) && palette.length) {
+                        this.colorPalette = palette
+                    }
+                } catch(e) {}
+            })
+            .catch(() => {})
         },
         updatePrefs(val) {
             console.log(val);
@@ -342,20 +357,6 @@ export default {
             this.prefs = prefs
             this.prefsLoaded = true
         })
-        setInterval(() => {
-            amulets.evalScript('getPendingPalette')
-            .then(result => {
-                if (result && result !== 'null') {
-                    try {
-                        const palette = JSON.parse(result)
-                        if (Array.isArray(palette) && palette.length) {
-                            this.colorPalette = palette
-                            this.activeTab = 'colors'
-                        }
-                    } catch (e) {}
-                }
-            })
-        }, 1000)
 	}
 }
 
@@ -429,6 +430,22 @@ export default {
 .swatch:hover {
     transform: scale(1.2);
     border-color: rgba(255,255,255,0.4);
+}
+.sync-btn {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    padding: 5px;
+    background: var(--color-bg-2, #333);
+    color: var(--color-default, #ccc);
+    border: 1px solid var(--color-border, #444);
+    border-radius: 3px;
+    font-size: 11px;
+    cursor: pointer;
+    text-align: center;
+}
+.sync-btn:hover {
+    background: var(--color-bg-3, #444);
 }
 .swatch-hint {
     font-size: 10px;
