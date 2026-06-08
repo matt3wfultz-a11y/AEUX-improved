@@ -110,10 +110,10 @@
                     class="swatch"
                     :style="{ background: swatchCss(swatch.color) }"
                     :title="swatchHex(swatch.color)"
-                    @click="createSwatch(swatch)"
+                    @click="applyColor(swatch)"
                 />
             </div>
-            <div class="swatch-hint">Click a swatch to add a solid to the comp</div>
+            <div class="swatch-hint">Click a swatch to apply to selected layer</div>
         </Fold>
 
         <Fold label="Groups"
@@ -222,6 +222,9 @@ export default {
             amulets.evalScript(msg, data)
         },
         buildLayers (layerData) {
+            if (layerData && layerData[0] && layerData[0].colorPalette && layerData[0].colorPalette.length) {
+                this.colorPalette = layerData[0].colorPalette
+            }
             amulets.evalScript('buildLayers', {layerData})
         },
         swatchCss(color) {
@@ -234,8 +237,8 @@ export default {
             const toHex = v => Math.round(v * 255).toString(16).padStart(2, '0')
             return '#' + toHex(color[0]) + toHex(color[1]) + toHex(color[2])
         },
-        createSwatch(swatch) {
-            amulets.evalScript('createSwatch', { color: swatch.color, name: this.swatchHex(swatch.color) })
+        applyColor(swatch) {
+            amulets.evalScript('applySwatchColor', { color: swatch.color })
         },
         updatePrefs(val) {
             console.log(val);

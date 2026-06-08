@@ -13,15 +13,19 @@ export function convert (data) {
     rasterizeList = []
     colorPaletteMap = {}
 
-    // console.log('tester', data);
     var layerData = filterTypes(data);
     layerData[0].layerCount = layerCount;
     layerData[0].rasterizeList = rasterizeList;
+    layerData[0].colorPalette = Object.values(colorPaletteMap);
 
     return layerData;
 }
 
 export function extractPalette(data) {
+    hasArtboard = false;
+    layerCount = 0;
+    boolOffset = null
+    rasterizeList = []
     colorPaletteMap = {}
     filterTypes(data)
     return Object.values(colorPaletteMap);

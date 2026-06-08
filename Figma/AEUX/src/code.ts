@@ -1,7 +1,7 @@
 import { analyzeNodes } from './validation';
 import { sanitizeLayerName } from './naming';
 
-figma.showUI(__html__, { width: 166, height: 268 });
+figma.showUI(__html__, { width: 166, height: 220 });
 let hasFrameData;
 let shapeTree = []
 let imageHashList = []

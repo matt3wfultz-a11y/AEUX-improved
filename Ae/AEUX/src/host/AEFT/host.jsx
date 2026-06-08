@@ -1595,6 +1595,30 @@ var AEUX = (function () {
         var h = Math.round(v * 255).toString(16);
         return h.length === 1 ? '0' + h : h;
     }
+    function applySwatchColor(swatchData) {
+        if (!setComp()) return;
+        var c = swatchData.color;
+        var aeColor = [c[0], c[1], c[2]];
+        var layers = thisComp.selectedLayers;
+        if (layers.length === 0) return;
+        app.beginUndoGroup('Apply swatch color');
+        for (var i = 0; i < layers.length; i++) {
+            var layer = layers[i];
+            try {
+                if (layer instanceof AVLayer && layer.source instanceof SolidSource) {
+                    layer.source.mainSource.color = aeColor;
+                } else if (layer instanceof ShapeLayer) {
+                    var contents = layer.property('ADBE Root Vectors Group');
+                    if (contents && contents.numProperties > 0) {
+                        var group = contents.property(1);
+                        var fill = group.property('ADBE Vector Graphic - Fill');
+                        if (fill) fill.property('ADBE Vector Fill Color').setValue(aeColor);
+                    }
+                }
+            } catch (e) {}
+        }
+        app.endUndoGroup();
+    }
     function createSwatch(swatchData) {
         if (!setComp()) return;
         app.beginUndoGroup('Create swatch');
@@ -1629,11 +1653,8 @@ var AEUX = (function () {
         buildLayers: function (compObj) {
             return buildLayers(compObj);
         },
-        createSwatch: function (swatchData) {
-            return createSwatch(swatchData);
-        },
-        buildPalette: function (paletteData) {
-            return buildPalette(paletteData);
+        applySwatchColor: function (swatchData) {
+            return applySwatchColor(swatchData);
         },
         toggleGroupVisibility: function () {
             toggleGroupVisibility();
