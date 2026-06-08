@@ -1,19 +1,29 @@
 <template>
     <Wrapper v-if="prefsLoaded">
-        <Dropzone 
+        <Dropzone
             :accepts="[ '.json' ]"
             auto-read auto-parse @read="buildLayers"
         />
+
+        <div class="tab-bar">
+            <div class="tab" :class="{ active: activeTab === 'layers' }" @click="activeTab = 'layers'">Layers</div>
+            <div class="tab" :class="{ active: activeTab === 'colors' }" @click="activeTab = 'colors'">
+                Colors
+                <span v-if="colorPalette.length" class="tab-badge">{{ colorPalette.length }}</span>
+            </div>
+        </div>
+
+        <div v-show="activeTab === 'layers'">
         <Row margin="0 auto 8px auto" style="width: 168px">
-            <Button-Group 
-                :active="(prefs.newComp) ? 0 : 1" 
-                exclusive 
+            <Button-Group
+                :active="(prefs.newComp) ? 0 : 1"
+                exclusive
                 @update="val => setPref('newComp', val == 0)">
-                <Button 
-                    prefix-icon="plus" 
-                    label="New Comp" 
+                <Button
+                    prefix-icon="plus"
+                    label="New Comp"
                     tooltip="Add layers to new comp"
-                    tall 
+                    tall
                     margin="0px" />
                 <Button
                     prefix-icon="arrow-down"
@@ -98,24 +108,6 @@
 			/>
 		</Fold>
 
-        <Fold
-            v-if="colorPalette.length"
-            label="Colors"
-            :open="true"
-            prefs-id="foldColors">
-            <div class="swatch-grid">
-                <div
-                    v-for="(swatch, i) in colorPalette"
-                    :key="i"
-                    class="swatch"
-                    :style="{ background: swatchCss(swatch.color) }"
-                    :title="swatchHex(swatch.color)"
-                    @click="applyColor(swatch)"
-                />
-            </div>
-            <div class="swatch-hint">Click a swatch to apply to selected layer</div>
-        </Fold>
-
         <Fold label="Groups"
             :open="false"
             prefs-id="foldGroups">
@@ -159,12 +151,12 @@
 			</Button-Group>
 		</Fold>
 
-        <Fold label="System" 
-            :open="false" 
+        <Fold label="System"
+            :open="false"
             prefs-id="foldSystem">
-            <Button 
-                block 
-                goto="https://aeux.io" 
+            <Button
+                block
+                goto="https://aeux.io"
                 tooltip="aeux.io"
                 @click.alt.native="openConfig">
                 Learn stuff
@@ -173,6 +165,23 @@
                 <i>Brought to you by your friends at Google motion design</i>
             </Panel-Info>
         </Fold>
+        </div><!-- end layers tab -->
+
+        <div v-show="activeTab === 'colors'" class="colors-tab">
+            <div v-if="colorPalette.length" class="swatch-grid">
+                <div
+                    v-for="(swatch, i) in colorPalette"
+                    :key="i"
+                    class="swatch"
+                    :style="{ background: swatchCss(swatch.color) }"
+                    :title="swatchHex(swatch.color)"
+                    @click="applyColor(swatch)"
+                />
+            </div>
+            <div v-if="colorPalette.length" class="swatch-hint">Click a swatch to apply color to selected layer</div>
+            <div v-else class="swatch-empty">No palette loaded yet.<br>Export from Figma to populate.</div>
+        </div>
+
         <Footer :footerMessage.sync="footerMessage" />
     </Wrapper>
 </template>
@@ -196,6 +205,7 @@ export default {
     },
 	data: () => ({
         aeuxVersion: 0.7,
+        activeTab: 'layers',
         colorPalette: [],
 		prefs: {
 			newComp: true,
@@ -224,6 +234,7 @@ export default {
         buildLayers (layerData) {
             if (layerData && layerData[0] && layerData[0].colorPalette && layerData[0].colorPalette.length) {
                 this.colorPalette = layerData[0].colorPalette
+                this.activeTab = 'colors'
             }
             amulets.evalScript('buildLayers', {layerData})
         },
@@ -339,6 +350,7 @@ export default {
                         const palette = JSON.parse(result)
                         if (Array.isArray(palette) && palette.length) {
                             this.colorPalette = palette
+                            this.activeTab = 'colors'
                         }
                     } catch (e) {}
                 }
@@ -361,6 +373,44 @@ export default {
 }
 .select-menu-item-label {
     padding-left: 8px;
+}
+.tab-bar {
+    display: flex;
+    border-bottom: 1px solid var(--color-border, #444);
+    margin-bottom: 4px;
+}
+.tab {
+    flex: 1;
+    text-align: center;
+    padding: 6px 0;
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--color-icon);
+    position: relative;
+}
+.tab.active {
+    color: var(--color-default);
+    border-bottom: 2px solid var(--color-selection, #4d90fe);
+    margin-bottom: -1px;
+}
+.tab-badge {
+    background: var(--color-selection, #4d90fe);
+    color: #fff;
+    border-radius: 8px;
+    font-size: 9px;
+    padding: 1px 4px;
+    margin-left: 3px;
+    vertical-align: middle;
+}
+.colors-tab {
+    padding: 8px 4px;
+}
+.swatch-empty {
+    color: var(--color-icon);
+    font-size: 11px;
+    text-align: center;
+    padding: 24px 8px;
+    line-height: 1.6;
 }
 .swatch-grid {
     display: flex;

@@ -125,6 +125,9 @@ var AEUX = (function () {
             var tempComp = app.project.items.addComp('LOADING...', 500, 500, 1, 1, 1);
             tempComp.openInViewer();
             filterTypes(importedLayerCode);
+            if (compObj.layerData[0].colorPalette && compObj.layerData[0].colorPalette.length) {
+                pendingPalette = compObj.layerData[0].colorPalette;
+            }
             tempComp.remove();
             if (thisComp) {
                 thisComp.openInViewer();
