@@ -1578,6 +1578,15 @@ var AEUX = (function () {
             alert(e.toString() + "\nError on line: " + e.line.toString());
         }
     }
+    function createSwatch(swatchData) {
+        if (!setComp()) return;
+        app.beginUndoGroup('Create swatch');
+        var c = swatchData.color;
+        var aeColor = [c[0], c[1], c[2]];
+        var solidLayer = thisComp.layers.addSolid(aeColor, swatchData.name, 100, 100, 1);
+        solidLayer.label = 3;
+        app.endUndoGroup();
+    }
     function downloadUpdateDialog() {
         var w = new Window('dialog', 'AEUX update required');
         var messageText = w.add('statictext', undefined, "Download a new version of the Ae panel (".concat(importVersion, ") from aeux.io"), { multiline: true });
@@ -1602,6 +1611,9 @@ var AEUX = (function () {
         },
         buildLayers: function (compObj) {
             return buildLayers(compObj);
+        },
+        createSwatch: function (swatchData) {
+            return createSwatch(swatchData);
         },
         toggleGroupVisibility: function () {
             toggleGroupVisibility();

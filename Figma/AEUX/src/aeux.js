@@ -4,20 +4,30 @@ import * as triclops from './triclops.js'
 
 var versionNumber = 0.81;
 var frameData, layers, hasArtboard, layerCount, layerData, boolOffset, rasterizeList, frameSize;
+var colorPaletteMap;
+
 export function convert (data) {
     hasArtboard = false;
     layerCount = 0;
     boolOffset = null
     rasterizeList = []
-    // var vm.imageIdList = [];
+    colorPaletteMap = {}
 
     // console.log('tester', data);
     var layerData = filterTypes(data);
     layerData[0].layerCount = layerCount;
     layerData[0].rasterizeList = rasterizeList;
-// console.log('layerData', layerData);
+    layerData[0].colorPalette = Object.values(colorPaletteMap);
 
     return layerData;
+}
+
+function collectColor(color) {
+    if (!color || color.length < 3) return;
+    const key = color[0].toFixed(4) + ',' + color[1].toFixed(4) + ',' + color[2].toFixed(4);
+    if (!colorPaletteMap[key]) {
+        colorPaletteMap[key] = { color: [color[0], color[1], color[2], color[3] !== undefined ? color[3] : 1] };
+    }
 }
 
 
@@ -802,6 +812,7 @@ function getFills(layer, parentFrame) {
             } else {                    
                 var color = colorObjToArray(fill);                    
                 
+                collectColor(color);
                 fillObj = {
                     type: 'fill',
                     enabled: fill.visible !== false,

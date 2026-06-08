@@ -98,7 +98,25 @@
 			/>
 		</Fold>
 
-        <Fold label="Groups" 
+        <Fold
+            v-if="colorPalette.length"
+            label="Colors"
+            :open="true"
+            prefs-id="foldColors">
+            <div class="swatch-grid">
+                <div
+                    v-for="(swatch, i) in colorPalette"
+                    :key="i"
+                    class="swatch"
+                    :style="{ background: swatchCss(swatch.color) }"
+                    :title="swatchHex(swatch.color)"
+                    @click="createSwatch(swatch)"
+                />
+            </div>
+            <div class="swatch-hint">Click a swatch to add a solid to the comp</div>
+        </Fold>
+
+        <Fold label="Groups"
             :open="false"
             prefs-id="foldGroups">
 			<Button-Group grid column>
@@ -178,6 +196,7 @@ export default {
     },
 	data: () => ({
         aeuxVersion: 0.7,
+        colorPalette: [],
 		prefs: {
 			newComp: true,
 			precompGroups: false,
@@ -203,7 +222,23 @@ export default {
             amulets.evalScript(msg, data)
         },
         buildLayers (layerData) {
+            if (layerData && layerData[0] && layerData[0].colorPalette) {
+                this.colorPalette = layerData[0].colorPalette
+            }
             amulets.evalScript('buildLayers', {layerData})
+        },
+        swatchCss(color) {
+            const r = Math.round(color[0] * 255)
+            const g = Math.round(color[1] * 255)
+            const b = Math.round(color[2] * 255)
+            return `rgb(${r},${g},${b})`
+        },
+        swatchHex(color) {
+            const toHex = v => Math.round(v * 255).toString(16).padStart(2, '0')
+            return '#' + toHex(color[0]) + toHex(color[1]) + toHex(color[2])
+        },
+        createSwatch(swatch) {
+            amulets.evalScript('createSwatch', { color: swatch.color, name: this.swatchHex(swatch.color) })
         },
         updatePrefs(val) {
             console.log(val);
@@ -310,6 +345,29 @@ export default {
 }
 .select-menu-item-label {
     padding-left: 8px;
+}
+.swatch-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 4px 0 6px 0;
+}
+.swatch {
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.1);
+    flex-shrink: 0;
+}
+.swatch:hover {
+    transform: scale(1.2);
+    border-color: rgba(255,255,255,0.4);
+}
+.swatch-hint {
+    font-size: 10px;
+    color: var(--color-icon);
+    margin-bottom: 4px;
 }
 .path-label {
     color: var(--color-icon);
