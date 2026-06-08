@@ -173,12 +173,13 @@
                     v-for="(swatch, i) in colorPalette"
                     :key="i"
                     class="swatch"
-                    :style="{ background: swatchCss(swatch.color) }"
-                    :title="swatchHex(swatch.color)"
-                    @click="applyColor(swatch)"
+                    :style="{ background: swatchBackground(swatch) }"
+                    :title="swatchTitle(swatch)"
+                    @click.exact="applyColor(swatch)"
+                    @click.shift.exact="copySwatchToClipboard(swatch)"
                 />
             </div>
-            <div v-if="colorPalette.length" class="swatch-hint">Click a swatch to apply color to selected layer</div>
+            <div v-if="colorPalette.length" class="swatch-hint">Click to apply · Shift+click gradient to copy stops</div>
             <div v-else class="swatch-empty">No palette loaded yet.<br>Send from Figma then click Sync.</div>
             <button class="sync-btn" @click="syncPalette">⟳ Sync from Figma</button>
         </div>
@@ -249,8 +250,40 @@ export default {
             const toHex = v => Math.round(v * 255).toString(16).padStart(2, '0')
             return '#' + toHex(color[0]) + toHex(color[1]) + toHex(color[2])
         },
+        swatchBackground(swatch) {
+            if (swatch.type === 'gradient' && swatch.gradient && swatch.gradient.points) {
+                const stops = swatch.gradient.points.map(p => {
+                    const r = Math.round(p.color[0] * 255)
+                    const g = Math.round(p.color[1] * 255)
+                    const b = Math.round(p.color[2] * 255)
+                    return `rgb(${r},${g},${b}) ${Math.round(p.rampPoint * 100)}%`
+                })
+                const dir = swatch.gradType === 2 ? 'circle' : 'to right'
+                return swatch.gradType === 2
+                    ? `radial-gradient(${stops.join(', ')})`
+                    : `linear-gradient(to right, ${stops.join(', ')})`
+            }
+            return this.swatchCss(swatch.color)
+        },
+        swatchTitle(swatch) {
+            if (swatch.type === 'gradient' && swatch.gradient && swatch.gradient.points) {
+                const toHex = v => Math.round(v * 255).toString(16).padStart(2, '0')
+                return swatch.gradient.points.map(p =>
+                    '#' + toHex(p.color[0]) + toHex(p.color[1]) + toHex(p.color[2])
+                ).join(' → ')
+            }
+            return this.swatchHex(swatch.color)
+        },
+        copySwatchToClipboard(swatch) {
+            if (swatch.type !== 'gradient' || !swatch.gradient) return
+            const toHex = v => Math.round(v * 255).toString(16).padStart(2, '0')
+            const text = swatch.gradient.points.map(p =>
+                '#' + toHex(p.color[0]) + toHex(p.color[1]) + toHex(p.color[2])
+            ).join(', ')
+            if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {})
+        },
         applyColor(swatch) {
-            amulets.evalScript('applySwatchColor', { color: swatch.color })
+            amulets.evalScript('applySwatchColor', swatch)
         },
         syncPalette() {
             fetch('http://127.0.0.1:7240/evalScript', {

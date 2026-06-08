@@ -35,7 +35,22 @@ function collectColor(color) {
     if (!color || color.length < 3) return;
     const key = color[0].toFixed(4) + ',' + color[1].toFixed(4) + ',' + color[2].toFixed(4);
     if (!colorPaletteMap[key]) {
-        colorPaletteMap[key] = { color: [color[0], color[1], color[2], color[3] !== undefined ? color[3] : 1] };
+        colorPaletteMap[key] = { type: 'solid', color: [color[0], color[1], color[2], color[3] !== undefined ? color[3] : 1] };
+    }
+}
+
+function collectGradient(fillObj) {
+    if (!fillObj || !fillObj.gradient || !fillObj.gradient.points) return;
+    const points = fillObj.gradient.points;
+    const key = 'grad:' + points.map(p => p.color.slice(0,3).map(v => v.toFixed(3)).join(',') + '@' + p.rampPoint.toFixed(3)).join('|');
+    if (!colorPaletteMap[key]) {
+        colorPaletteMap[key] = {
+            type: 'gradient',
+            gradType: fillObj.gradType,
+            gradient: fillObj.gradient,
+            startPoint: fillObj.startPoint,
+            endPoint: fillObj.endPoint,
+        };
     }
 }
 
@@ -803,8 +818,6 @@ function getFills(layer, parentFrame) {
                 
                 fillObj = {
                     type: 'gradient',
-                    // startPoint: [points.start[0], points.start[1] ],
-                    // endPoint: [points.end[0], points.end[1] ],
                     startPoint: [points.start[0] - layer.width / 2, points.start[1] - layer.height / 2 ],
                     endPoint: [points.end[0] - layer.width / 2, points.end[1] - layer.height / 2 ],
                     gradType:  gradType,
@@ -812,6 +825,7 @@ function getFills(layer, parentFrame) {
                     opacity: 100,
                     blendMode: getShapeBlending( fill.blendMode ),
                 }
+                collectGradient(fillObj);
                 
             // fill is an image or texture
             } else if (fill.type == 'IMAGE' && !layer.isMask) {

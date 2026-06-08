@@ -1601,22 +1601,43 @@ var AEUX = (function () {
     }
     function applySwatchColor(swatchData) {
         if (!setComp()) return;
-        var c = swatchData.color;
-        var aeColor = [c[0], c[1], c[2]];
         var layers = thisComp.selectedLayers;
         if (layers.length === 0) return;
-        app.beginUndoGroup('Apply swatch color');
+        app.beginUndoGroup('Apply swatch');
         for (var i = 0; i < layers.length; i++) {
             var layer = layers[i];
             try {
-                if (layer instanceof AVLayer && layer.source instanceof SolidSource) {
-                    layer.source.mainSource.color = aeColor;
-                } else if (layer instanceof ShapeLayer) {
+                if (swatchData.type === 'gradient') {
+                    if (!(layer instanceof ShapeLayer)) continue;
                     var contents = layer.property('ADBE Root Vectors Group');
-                    if (contents && contents.numProperties > 0) {
-                        var group = contents.property(1);
-                        var fill = group.property('ADBE Vector Graphic - Fill');
-                        if (fill) fill.property('ADBE Vector Fill Color').setValue(aeColor);
+                    if (!contents || contents.numProperties === 0) continue;
+                    var found = false;
+                    for (var g = 1; g <= contents.numProperties && !found; g++) {
+                        var group = contents.property(g);
+                        var vg = group.property('ADBE Vectors Group');
+                        if (!vg) continue;
+                        for (var f = 1; f <= vg.numProperties && !found; f++) {
+                            var prop = vg.property(f);
+                            if (prop.matchName === 'ADBE Vector Graphic - G-Fill') {
+                                ae_deselectProps();
+                                prop.selected = true;
+                                applyGradientFfx('fill', false, swatchData);
+                                found = true;
+                            }
+                        }
+                    }
+                } else {
+                    var c = swatchData.color;
+                    var aeColor = [c[0], c[1], c[2]];
+                    if (layer instanceof AVLayer && layer.source instanceof SolidSource) {
+                        layer.source.mainSource.color = aeColor;
+                    } else if (layer instanceof ShapeLayer) {
+                        var contents = layer.property('ADBE Root Vectors Group');
+                        if (contents && contents.numProperties > 0) {
+                            var group = contents.property(1);
+                            var fill = group.property('ADBE Vector Graphic - Fill');
+                            if (fill) fill.property('ADBE Vector Fill Color').setValue(aeColor);
+                        }
                     }
                 }
             } catch (e) {}
