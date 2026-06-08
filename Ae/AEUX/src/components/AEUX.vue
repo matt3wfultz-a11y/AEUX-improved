@@ -240,6 +240,11 @@ export default {
         applyColor(swatch) {
             amulets.evalScript('applySwatchColor', { color: swatch.color })
         },
+        receivePalette(palette) {
+            if (palette && palette.length) {
+                this.colorPalette = palette
+            }
+        },
         updatePrefs(val) {
             console.log(val);
             Object.keys(val).forEach(prefName => {
@@ -319,15 +324,26 @@ export default {
         //     return require("cep-spy").default;
         // },
 	},
-	mounted() {      
+	mounted() {
         amulets.getPrefs(this.prefs)
-        .then(prefs => { 
+        .then(prefs => {
             console.log(prefs);
-            
-            this.prefs = prefs 
+            this.prefs = prefs
             this.prefsLoaded = true
         })
-        // amulets.newServer(port_ae)
+        setInterval(() => {
+            amulets.evalScript('getPendingPalette')
+            .then(result => {
+                if (result && result !== 'null') {
+                    try {
+                        const palette = JSON.parse(result)
+                        if (Array.isArray(palette) && palette.length) {
+                            this.colorPalette = palette
+                        }
+                    } catch (e) {}
+                }
+            })
+        }, 1000)
 	}
 }
 

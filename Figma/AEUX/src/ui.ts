@@ -260,7 +260,7 @@ onmessage = (event) => {
             method: 'POST',
             headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                method: 'buildPalette',
+                method: 'receivePalette',
                 data: { palette },
                 switch: 'aftereffects',
             })
@@ -269,7 +269,9 @@ onmessage = (event) => {
             if (response.ok) return response.json()
             throw Error('failed to connect')
         })
-        .then(() => setFooterMsg(null, `${palette.length} color${palette.length === 1 ? '' : 's'} sent to Ae`))
+        .then(json => {
+            setFooterMsg(null, `${palette.length} color${palette.length === 1 ? '' : 's'} sent to Ae`)
+        })
         .catch(() => setFooterMsg(null, 'Failed to connect to Ae'))
     }
 

@@ -51,6 +51,7 @@ var AEUX = (function () {
     var clippingMask = null;
     var thisComp = null;
     var compMult = 1;
+    var pendingPalette = null;
     var maskLayer = {};
     var returnMessage = [];
     var maskPosition = [0, 0];
@@ -1655,6 +1656,15 @@ var AEUX = (function () {
         },
         applySwatchColor: function (swatchData) {
             return applySwatchColor(swatchData);
+        },
+        receivePalette: function (paletteData) {
+            pendingPalette = paletteData.palette;
+            return JSON.stringify({ count: paletteData.palette.length });
+        },
+        getPendingPalette: function () {
+            var p = pendingPalette;
+            pendingPalette = null;
+            return p ? JSON.stringify(p) : 'null';
         },
         toggleGroupVisibility: function () {
             toggleGroupVisibility();
