@@ -548,7 +548,8 @@ var AEUX = (function () {
         addBgBlur(r, layer);
     }
     function aePath(layer, opt_parent) {
-        if (!layer.path || layer.path.points.length < 1) {
+        if (!layer.path || !layer.path.points || layer.path.points.length < 1) {
+            returnMessage.push('Skipped "' + (layer && layer.name ? layer.name : 'shape') + '": no path data');
             return;
         }
         var r = initShapeLayer(layer, opt_parent);
@@ -592,7 +593,35 @@ var AEUX = (function () {
         setMask(r, layer);
         addBgBlur(r, layer);
     }
+    function hasCompoundGeometry(layer) {
+        if (!layer || !layer.layers || layer.layers.length < 1) {
+            return false;
+        }
+        for (var i = 0; i < layer.layers.length; i++) {
+            var shape = layer.layers[i];
+            if (!shape) {
+                continue;
+            }
+            if (shape.layers) {
+                if (hasCompoundGeometry(shape)) {
+                    return true;
+                }
+                continue;
+            }
+            if (prefs.parametrics && (shape.type === 'Rect' || shape.type === 'Ellipse')) {
+                return true;
+            }
+            if (shape.path && shape.path.points && shape.path.points.length > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
     function aeCompound(layer, opt_parent) {
+        if (!hasCompoundGeometry(layer)) {
+            returnMessage.push('Skipped "' + (layer && layer.name ? layer.name : 'compound shape') + '": no path data');
+            return;
+        }
         var r = initShapeLayer(layer, opt_parent);
         var group = r(2).addProperty('ADBE Vector Group');
         group.name = layer.name;
@@ -621,7 +650,7 @@ var AEUX = (function () {
             var layerCount = layer.layers.length || 1;
             for (var i = 0; i < layerCount; i++) {
                 if (layer.layers[i] == undefined) {
-                    return;
+                    continue;
                 }
                 var shape = layer.layers[i];
                 var posOffset = [(layer.frame.width - shape.frame.width) / -2, (layer.frame.height - shape.frame.height) / -2];
@@ -644,14 +673,12 @@ var AEUX = (function () {
                     ellipse('ADBE Vector Ellipse Position').setValue(posOffset + [shape.frame.x, shape.frame.y]);
                 }
                 if (shape.type === 'Path' || !prefs.parametrics) {
+                    if (!shape.path || !shape.path.points || shape.path.points.length < 1) {
+                        continue;
+                    }
                     var subGroup = needsSubGroup(group, shape);
                     var vect = subGroup(2).addProperty('ADBE Vector Shape - Group');
-                    if (shape.path.points.length < 1) {
-                        return;
-                    }
                     var pathProp = vect.property('ADBE Vector Shape');
-                    var vertices = shape.path.points;
-                    if (vertices.length < 1) { }
                     var pathObj = {
                         path: pathProp,
                         points: shape.path.points,
@@ -983,7 +1010,7 @@ var AEUX = (function () {
                     applyGradientFfx('stroke', false, layer.stroke[i]);
                 }
                 stroke("ADBE Vector Blend Mode").setValue(layer.stroke[i].blendMode);
-                if (layer.stroke[i].strokeDashes.length > 0) {
+                if (layer.stroke[i].strokeDashes && layer.stroke[i].strokeDashes.length > 0) {
                     var strokeDashes = layer.stroke[i].strokeDashes;
                     for (var j = 1; j <= strokeDashes.length; j++) {
                         countRound = Math.round(j / 2);
@@ -1000,8 +1027,9 @@ var AEUX = (function () {
             }
         }
         function setStrokeProps(stroke, i) {
+            var width = (typeof layer.stroke[i].width == 'number') ? layer.stroke[i].width : 1;
             stroke("ADBE Vector Stroke Opacity").setValue(layer.stroke[i].opacity);
-            stroke("ADBE Vector Stroke Width").setValue(layer.stroke[i].width);
+            stroke("ADBE Vector Stroke Width").setValue(width);
             stroke("ADBE Vector Stroke Line Cap").setValue(layer.stroke[i].cap + 1);
             stroke("ADBE Vector Stroke Line Join").setValue(layer.stroke[i].join + 1);
         }

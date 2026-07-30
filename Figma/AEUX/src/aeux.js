@@ -103,7 +103,10 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
                 return
             }
             if (drawsNothing(layer)) { return; }     // would land in Ae as an empty shape layer
-            aeuxData.push(getShape(layer, parentFrame, boolType));
+
+            let shapeData = getShape(layer, parentFrame, boolType);
+            if (!shapeData) { return; }              // no usable geometry
+            aeuxData.push(shapeData);
             layerCount++;
         }
         if (layer.type == "INSTANCE" || layer.type == "COMPONENT" || layer.type == "FRAME" || layer.type == "AUTOLAYOUT") {
@@ -440,7 +443,7 @@ function getComponent(layer, parentFrame) {
         // only build a background when the frame paints something – otherwise every
         // frame/component/instance adds an empty shape layer to the precomp
         if (hasVisiblePaint(layer.fills) ||
-            (hasVisiblePaint(layer.strokes) && layer.strokeWeight !== 0) ||
+            (hasVisiblePaint(layer.strokes) && getStrokeWeight(layer) > 0) ||
             hasVisibleEffect(layer, 'BACKGROUND_BLUR')) {
             layerData.layers.unshift(getFrameBackground(layer, frame))
         }
@@ -604,6 +607,10 @@ function getBoolean(layer, parentFrame, boolType, isMultipath) {
             layer.booleanOperation = boolType
         })
     }
+
+    // without geometry this builds an invisible, uneditable shape layer in Ae
+    if (!hasDrawablePath(layerData.layers)) { return null }
+
     getEffects(layer, layerData);
     // console.log(layerData)
   return layerData;
@@ -705,6 +712,19 @@ function getOpacity(layer) {
 
     return Math.round(layer.opacity * 100);
 }
+//// stroke weight in px – Figma reports it as mixed when the sides differ, so
+//// fall back to the heaviest side instead of sending Ae an undefined width
+function getStrokeWeight(layer) {
+    if (typeof layer.strokeWeight == 'number') { return layer.strokeWeight }
+
+    var sides = [layer.strokeTopWeight, layer.strokeRightWeight, layer.strokeBottomWeight, layer.strokeLeftWeight];
+    var weight = 0;
+    for (var i = 0; i < sides.length; i++) {
+        if (typeof sides[i] == 'number') { weight = Math.max(weight, sides[i]) }
+    }
+
+    return weight || 1;
+}
 //// does the paint list (fills or strokes) put any pixels on screen?
 function hasVisiblePaint(paints) {
     if (!paints || !paints.length) { return false }
@@ -736,7 +756,7 @@ function drawsNothing(layer) {
     if (layer.isMask) { return false }
     if (boolDepth > 0) { return false }
     if (hasVisiblePaint(layer.fills)) { return false }
-    if (hasVisiblePaint(layer.strokes) && layer.strokeWeight !== 0) { return false }
+    if (hasVisiblePaint(layer.strokes) && getStrokeWeight(layer) > 0) { return false }
     if (hasVisibleEffect(layer)) { return false }
 
     return true;
@@ -996,10 +1016,10 @@ function getStrokes(layer) {
                         gradType:  gradType,
                         gradient: getGradient(stroke.gradientStops),
         				opacity: 100,
-        				width: layer.strokeWeight,
+        				width: getStrokeWeight(layer),
         				cap: getCap(layer),
         				join: getJoin(layer),
-                        strokeDashes: layer.dashPattern,
+                        strokeDashes: layer.dashPattern || [],
                         blendMode: getShapeBlending( stroke.blendMode ),
         			}
                 // stroke is a solid
@@ -1010,10 +1030,10 @@ function getStrokes(layer) {
                         enabled: stroke.visible !== false,
         				color: color,
         				opacity: color[3] * 100,
-        				width: layer.strokeWeight,
+        				width: getStrokeWeight(layer),
         				cap: getCap(layer),
         				join: getJoin(layer),
-                        strokeDashes: layer.dashPattern,
+                        strokeDashes: layer.dashPattern || [],
                         blendMode: getShapeBlending( stroke.blendMode ),
         			}
                 }
@@ -1246,19 +1266,44 @@ function getShapeBlending(mode) {
     return aeBlendMode;
 }
 
+//// the outline of a parametric shape (star, polygon, mixed-radius rectangle).
+//// Figma leaves fillGeometry empty when the shape has no fill, so fall back to
+//// the stroke outline rather than reading past the end of an empty list
+function getGeometry(layer) {
+    if (layer.fillGeometry && layer.fillGeometry.length > 0) { return layer.fillGeometry }
+    if (layer.strokeGeometry && layer.strokeGeometry.length > 0) { return layer.strokeGeometry }
+
+    return [];
+}
+//// does a compound shape have anything to draw? an empty one builds a shape
+//// layer in Ae that holds a fill and a stroke but no geometry – it renders
+//// nothing, and recoloring it does nothing either
+function hasDrawablePath(layers) {
+    if (!layers || layers.length < 1) { return false }
+
+    for (var i = 0; i < layers.length; i++) {
+        var layer = layers[i];
+        if (layer.layers) {
+            if (hasDrawablePath(layer.layers)) { return true }
+            continue;
+        }
+        if (layer.path && layer.path.points && layer.path.points.length > 0) { return true }
+    }
+    return false;
+}
 //// get shape data: PATH
-function getPath(layer, bounding, type) {    
+function getPath(layer, bounding, type) {
     // console.log('getPath', layer);
 
     // check if rectangle has uniform corner rounding
     const allEqual = arr => arr.every(v => v === arr[0])
     if (layer.type == 'STAR' || layer.type == 'POLYGON' || (layer.type == 'RECTANGLE' && !allEqual([layer.topLeftRadius, layer.topRightRadius, layer.bottomLeftRadius, layer.bottomRightRadius])) ) {
-        layer.vectorPaths = layer.fillGeometry
+        layer.vectorPaths = getGeometry(layer)
         layer.type = 'Path'
     }
-    
+
     var pathStr, pathObj;
-    if (layer.vectorPaths && layer.vectorPaths.length < 2) {       // find an individual path
+    if (layer.vectorPaths && layer.vectorPaths.length == 1) {       // find an individual path
         pathStr = layer.vectorPaths || layer;
         pathObj = parseSvg(pathStr[0].data);
         console.log('pathObj', pathObj);
@@ -1271,8 +1316,10 @@ function getPath(layer, bounding, type) {
         return 'multiPath'
     } else if (type == 'multiPath') {
         console.log('multiPath', layer);
-        
+
         pathObj = parseSvg(layer);
+    } else if (layer.vectorPaths) {     // an empty geometry list – nothing to draw
+        return null;
     } else {
         // get the fill path or the stroke path if no fill
         try {

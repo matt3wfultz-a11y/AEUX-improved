@@ -848,7 +848,10 @@ function aeStar(layer, opt_parent) {
 //// path
 function aePath(layer, opt_parent) {
     // skip if no vertices
-    if (!layer.path || layer.path.points.length < 1) { return; }
+    if (!layer.path || !layer.path.points || layer.path.points.length < 1) {
+        returnMessage.push('Skipped "' + (layer && layer.name ? layer.name : 'shape') + '": no path data');
+        return;
+    }
 
     var r = initShapeLayer(layer, opt_parent);
 
@@ -918,8 +921,32 @@ function aePath(layer, opt_parent) {
     addBgBlur(r, layer);
 }
 
+//// does a compound shape have anything to build?
+function hasCompoundGeometry(layer) {
+    if (!layer || !layer.layers || layer.layers.length < 1) { return false; }
+
+    for (var i = 0; i < layer.layers.length; i++) {
+        var shape = layer.layers[i];
+        if (!shape) { continue; }
+        if (shape.layers) {                                     // a nested compound
+            if (hasCompoundGeometry(shape)) { return true; }
+            continue;
+        }
+        if (prefs.parametrics && (shape.type === 'Rect' || shape.type === 'Ellipse')) { return true; }
+        if (shape.path && shape.path.points && shape.path.points.length > 0) { return true; }
+    }
+    return false;
+}
+
 //// compound path
 function aeCompound(layer, opt_parent) {
+    // a compound with no geometry builds a shape layer holding a fill and a
+    // stroke but no path - it renders nothing and recoloring it does nothing
+    if (!hasCompoundGeometry(layer)) {
+        returnMessage.push('Skipped "' + (layer && layer.name ? layer.name : 'compound shape') + '": no path data');
+        return;
+    }
+
     var r = initShapeLayer(layer, opt_parent);
 
     /// create an empty group
@@ -970,7 +997,7 @@ function aeCompound(layer, opt_parent) {
         var layerCount = layer.layers.length || 1;
         for (var i = 0; i < layerCount; i++) {
 
-            if (layer.layers[i] == undefined) { return } 		// no nested layers
+            if (layer.layers[i] == undefined) { continue } 		// no nested layers
 
             var shape = layer.layers[i];
             // find the individual shape's offset with the compound
@@ -998,12 +1025,12 @@ function aeCompound(layer, opt_parent) {
             }
             // if a path
             if (shape.type === 'Path' || !prefs.parametrics) {
+                // skip the shape rather than abandoning the rest of the compound
+                if (!shape.path || !shape.path.points || shape.path.points.length < 1) { continue; }
+
                 var subGroup = needsSubGroup(group, shape);
                 var vect = subGroup(2).addProperty('ADBE Vector Shape - Group');
-                if (shape.path.points.length < 1) { return; }
                 var pathProp = vect.property('ADBE Vector Shape');
-                var vertices = shape.path.points;
-                if (vertices.length < 1) {}
                 var pathObj = {
                     path: pathProp,
                     points: shape.path.points,
@@ -1539,7 +1566,7 @@ function addStroke(r, layer) {
             stroke("ADBE Vector Blend Mode").setValue(layer.stroke[i].blendMode);
 
             // apply dashes
-            if (layer.stroke[i].strokeDashes.length > 0) {
+            if (layer.stroke[i].strokeDashes && layer.stroke[i].strokeDashes.length > 0) {
                 var strokeDashes = layer.stroke[i].strokeDashes;
 
                 for (var j = 1; j <= strokeDashes.length; j++) {
@@ -1558,8 +1585,11 @@ function addStroke(r, layer) {
     }
 
     function setStrokeProps(stroke, i) {
+        // a width of undefined throws and takes the whole layer down with it
+        var width = (typeof layer.stroke[i].width == 'number') ? layer.stroke[i].width : 1;
+
         stroke("ADBE Vector Stroke Opacity").setValue(layer.stroke[i].opacity);
-        stroke("ADBE Vector Stroke Width").setValue(layer.stroke[i].width);
+        stroke("ADBE Vector Stroke Width").setValue(width);
         stroke("ADBE Vector Stroke Line Cap").setValue(layer.stroke[i].cap + 1);
         stroke("ADBE Vector Stroke Line Join").setValue(layer.stroke[i].join + 1 );
     }
