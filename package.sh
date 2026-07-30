@@ -38,14 +38,23 @@ mkdir -p "$OUT_DIR"
 
 # After Effects extension (the whole folder goes into CEP/extensions/)
 cp -r "$SCRIPT_DIR/Ae/AEUX" "$OUT_DIR/AEUX"
-# Remove dev-only files from the copy
+# Remove dev-only files from the copy. src/host has to stay: CSXS/manifest.xml
+# loads the ExtendScript from ./src/host/AEFT/host.jsx at runtime, so without it
+# the panel opens but every command fails with "AEUX is undefined".
 rm -rf "$OUT_DIR/AEUX/node_modules" \
-       "$OUT_DIR/AEUX/src" \
        "$OUT_DIR/AEUX/babel.config.js" \
        "$OUT_DIR/AEUX/vue.config.js" \
        "$OUT_DIR/AEUX/package.json" \
        "$OUT_DIR/AEUX/package-lock.json" \
        "$OUT_DIR/AEUX/README.md"
+find "$OUT_DIR/AEUX/src" -mindepth 1 -maxdepth 1 ! -name host -exec rm -rf {} +
+rm -f "$OUT_DIR/AEUX/src/host/AEFT/host.ts" "$OUT_DIR/AEUX/src/host/AEFT/tsconfig.json"
+
+# the packaged extension is useless without the host script - fail loudly
+if [ ! -f "$OUT_DIR/AEUX/src/host/AEFT/host.jsx" ]; then
+  echo "Error: host.jsx missing from the packaged extension."
+  exit 1
+fi
 
 # Figma plugin (manifest + compiled dist)
 mkdir -p "$OUT_DIR/AEUX-Figma"
