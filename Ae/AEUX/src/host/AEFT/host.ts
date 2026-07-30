@@ -318,7 +318,12 @@ function aeText(layer, opt_parent) {
     if (layer.lineHeight != null) {
         try {
             // only supported in CC2017.2 (14.2)
+            textDoc.autoLeading = false;
             textDoc.leading = layer.lineHeight;
+        } catch (e) {}
+    } else {
+        try {
+            textDoc.autoLeading = true;
         } catch (e) {}
     }
 
@@ -353,6 +358,21 @@ function aeText(layer, opt_parent) {
         // if (layer.rotation != 0 || (layer.flip[0] != 100 && layer.flip[1] != 100) || hostApp != 'Figma') {
             // var rect = r.sourceRectAtTime(0, false);
             var centeredPos = [(layer.frame.x) * compMult, (layer.frame.y) * compMult];
+
+            // Ae drops the first baseline a full line height into the text box while
+            // Figma splits the leading above and below it, so a box that lines up on
+            // the outside still renders the text a few pixels low. layer.inkTop is how
+            // far the glyphs sit below the top of the box in Figma - match it here.
+            if (layer.inkTop != null && layer.rotation == 0 && layer.flip[0] == 100 && layer.flip[1] == 100) {
+                try {
+                    var boxTop = layer.frame.y - layer.frame.height/2;
+                    var textRect = r.sourceRectAtTime(thisComp.time, false);
+                    if (textRect.height > 0) {
+                        centeredPos[1] = (boxTop + layer.inkTop - textRect.top) * compMult;
+                    }
+                } catch (e) {}
+            }
+
             r('ADBE Transform Group')('ADBE Position').setValue( centeredPos );		// set position
         // } else {
         //     // r('ADBE Transform Group')('ADBE Position').setValue([ layer.frame.x * compMult, (layer.frame.y + layer.fontSize/6) * compMult]);

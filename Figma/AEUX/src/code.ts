@@ -445,6 +445,23 @@ function nodeToObj (nodes) {
             (obj as any).name = sanitizeLayerName((obj as any).name as string);
         }
 
+        // where the rendered glyphs actually sit inside the text box – Ae needs
+        // this to line text up vertically (see getInkOffset in aeux.js)
+        if (node.type === 'TEXT') {
+            try {
+                const render = node.absoluteRenderBounds;
+                const box = node.absoluteBoundingBox;
+                if (render && box) {
+                    (obj as any).renderBounds = {
+                        x: render.x - box.x,
+                        y: render.y - box.y,
+                        width: render.width,
+                        height: render.height,
+                    };
+                }
+            } catch (error) {}
+        }
+
         // set type AFTER the loop so nothing can overwrite it
         if (rasterize) {
             obj.type = 'RASTERIZE';

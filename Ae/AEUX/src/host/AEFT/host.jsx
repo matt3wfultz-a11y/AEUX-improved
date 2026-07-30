@@ -246,7 +246,14 @@ var AEUX = (function () {
             textDoc.justification = paragraphJustification(layer.justification);
             if (layer.lineHeight != null) {
                 try {
+                    textDoc.autoLeading = false;
                     textDoc.leading = layer.lineHeight;
+                }
+                catch (e) { }
+            }
+            else {
+                try {
+                    textDoc.autoLeading = true;
                 }
                 catch (e) { }
             }
@@ -273,6 +280,16 @@ var AEUX = (function () {
             }
             else {
                 var centeredPos = [(layer.frame.x) * compMult, (layer.frame.y) * compMult];
+                if (layer.inkTop != null && layer.rotation == 0 && layer.flip[0] == 100 && layer.flip[1] == 100) {
+                    try {
+                        var boxTop = layer.frame.y - layer.frame.height / 2;
+                        var textRect = r.sourceRectAtTime(thisComp.time, false);
+                        if (textRect.height > 0) {
+                            centeredPos[1] = (boxTop + layer.inkTop - textRect.top) * compMult;
+                        }
+                    }
+                    catch (e) { }
+                }
                 r('ADBE Transform Group')('ADBE Position').setValue(centeredPos);
             }
             r('ADBE Transform Group')('ADBE Opacity').setValue(layer.opacity);

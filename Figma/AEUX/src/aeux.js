@@ -4,10 +4,12 @@ import * as triclops from './triclops.js'
 
 var versionNumber = 0.81;
 var frameData, layers, hasArtboard, layerCount, layerData, boolOffset, rasterizeList, frameSize;
+var boolDepth = 0;      // how deep we are inside a boolean operation
 export function convert (data) {
     hasArtboard = false;
     layerCount = 0;
     boolOffset = null
+    boolDepth = 0
     rasterizeList = []
     // var vm.imageIdList = [];
 
@@ -100,6 +102,7 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
                 rasterizeList.push(layer.id)
                 return
             }
+            if (drawsNothing(layer)) { return; }     // would land in Ae as an empty shape layer
             aeuxData.push(getShape(layer, parentFrame, boolType));
             layerCount++;
         }
@@ -168,7 +171,7 @@ function getShape(layer, parentFrame, boolType) {
 		path: path,
 		roundness: Math.round(layer.cornerRadius) || 0,
 		// roundness: (layer.type == 'RECTANGLE') ? Math.round(layer.cornerRadius) || 0 : 0,
-		opacity: layer.opacity*100 || 100,
+		opacity: getOpacity(layer),
         rotation: getRotation(layer),
 		flip: (boolType) ? [100, 100] : getFlipMultiplier(layer),
         blendMode: getLayerBlending(layer.blendMode),
@@ -242,7 +245,7 @@ function getText(layer, parentFrame) {
         id: layer.id,
         frame: frame,
         isVisible: (layer.visible !== false),
-        opacity: layer.opacity*100 || 100,
+        opacity: getOpacity(layer),
         textColor: getTextFill(layer),
         fill: null,
         stroke: getStrokes(layer),
@@ -256,6 +259,7 @@ function getText(layer, parentFrame) {
         // tracking: layer.letterSpacing.value,        // xxx could be percent
         justification: getJustification(layer),
         lineHeight: lineHeight,
+        inkTop: getInkOffset(layer),
         flip: flip,
         rotation: getRotation(layer),
         isMask: layer.isMask,
@@ -312,22 +316,52 @@ function getText(layer, parentFrame) {
         return 0;
     }
     function getLineHeight(layer) {
-        if (layer.lineHeight.unit == 'PIXELS') {
-            return layer.lineHeight.value;
-        } else if (layer.lineHeight.unit == 'PERCENT') {
-            return layer.fontSize * (layer.lineHeight.value / 100); 
-        } else {        // line height set to auto
-            return layer.height / layer.fontSize;
-            // return null;
-        }
+        try {
+            if (layer.lineHeight.unit == 'PIXELS') {
+                return layer.lineHeight.value;
+            }
+            if (layer.lineHeight.unit == 'PERCENT') {
+                return layer.fontSize * (layer.lineHeight.value / 100);
+            }
+        } catch (error) {}
+
+        return null;        // line height set to auto – let Ae auto-lead it
     }
     function getTracking(layer) {
-        if (layer.letterSpacing.unit == 'PIXELS') {
-            return layer.fontSize * layer.letterSpacing.value * 3.9;
-        } else if (layer.letterSpacing.unit == 'PERCENT') {
-            return layer.letterSpacing.value * 10;
-        } else {
-            return 0;
+        /// Ae tracking is measured in 1/1000 em
+        try {
+            if (layer.letterSpacing.unit == 'PIXELS') {
+                return layer.letterSpacing.value / layer.fontSize * 1000;
+            }
+            if (layer.letterSpacing.unit == 'PERCENT') {
+                return layer.letterSpacing.value * 10;
+            }
+        } catch (error) {}
+
+        return 0;
+    }
+    //// how far the rendered glyphs sit below the top of the text box.
+    //// Ae drops the first baseline a full line height into a text box while
+    //// Figma splits the leading above and below it, so Ae uses this to line
+    //// the two up. Only measurable when nothing else inflates the render
+    //// bounds and the box is axis aligned (see code.ts for renderBounds).
+    function getInkOffset(layer) {
+        try {
+            if (!layer.renderBounds) { return null }
+
+            // the bounds are axis aligned on the page, so they only describe the
+            // text box while the layer – and everything above it – is upright
+            var matrix = layer.absoluteTransform;
+            if (Math.abs(matrix[0][1]) > 0.0001 || Math.abs(matrix[1][0]) > 0.0001) { return null }
+            if (matrix[0][0] < 0 || matrix[1][1] < 0) { return null }
+
+            // a stroke or an effect grows the render bounds past the glyphs
+            if (layer.strokes && layer.strokes.length > 0) { return null }
+            if (hasVisibleEffect(layer)) { return null }
+
+            return layer.renderBounds.y;
+        } catch (error) {
+            return null;
         }
     }
 }
@@ -346,7 +380,7 @@ function getGroup(layer, parentFrame, isMasked) {
 		id: layer.id,
 		frame: calcFrame,
         isVisible: (layer.visible !== false),
-		opacity: Math.round(layer.opacity * 100) || 100,
+		opacity: getOpacity(layer),
 		// rotation: getRotation(layer) * (flip[1]/100),
 		rotation: getRotation(layer),
 		blendMode: getLayerBlending(layer.blendMode),
@@ -386,7 +420,7 @@ function getComponent(layer, parentFrame) {
         id: layer.id,
         frame: calcFrame,
         isVisible: (layer.visible !== false),
-        opacity: layer.opacity*100 || 100,
+        opacity: getOpacity(layer),
         blendMode: getLayerBlending(layer.blendMode),
         symbolFrame: layer.masterComponent,
         bgColor: [1,1,1,1],
@@ -399,12 +433,17 @@ function getComponent(layer, parentFrame) {
     
     // check if an autoLayout
     // if (layer.layoutMode !== 'NONE' || layer.type == 'AUTOLAYOUT') {
-        
+
         layerData.layers = filterTypes(layer)
         // console.log('background', getShape(layer));
-        
-        layerData.layers.unshift(getShape(layer, frame))  // add the background of the frame
-        layerData.layers[0].type = 'AutoLayoutBG'
+
+        // only build a background when the frame paints something – otherwise every
+        // frame/component/instance adds an empty shape layer to the precomp
+        if (hasVisiblePaint(layer.fills) ||
+            (hasVisiblePaint(layer.strokes) && layer.strokeWeight !== 0) ||
+            hasVisibleEffect(layer, 'BACKGROUND_BLUR')) {
+            layerData.layers.unshift(getFrameBackground(layer, frame))
+        }
     // } else {
         // layerData.layers = filterTypes(layer, {x: frame.width/2, y: frame.height/2, width: frame.width, height: frame.height})
         // layerData.layers = filterTypes(layer, frame)
@@ -476,6 +515,25 @@ function getComponent(layer, parentFrame) {
         return frameObj;
     }
 }
+//// the fill/stroke of a frame, built as the bottom layer of its precomp.
+//// Transforms, opacity, blending, masking and effects all live on the precomp
+//// layer itself, so they're neutralized here to keep them from applying twice.
+function getFrameBackground(layer, frame) {
+    var background = getShape(layer, frame);
+
+    if (background.type != 'Image') { background.type = 'AutoLayoutBG' }
+    background.opacity = 100;
+    background.rotation = 0;
+    background.flip = [100, 100];
+    background.blendMode = getLayerBlending('NORMAL');
+    background.isMask = false;
+    background.shouldBreakMaskChain = false;
+    background.shadow = null;
+    background.innerShadow = null;
+    background.blur = null;
+
+    return background;
+}
 //// get layer data: BOOLEAN_OPERATION
 function getBoolean(layer, parentFrame, boolType, isMultipath) {
     var frame = getFrame(layer, parentFrame);
@@ -501,7 +559,7 @@ function getBoolean(layer, parentFrame, boolType, isMultipath) {
         fill: getFills(layer, parentFrame),
         stroke: getStrokes(layer),
         isVisible: (layer.visible !== false),
-		opacity: Math.round(layer.opacity*100) || 100,
+		opacity: getOpacity(layer),
 		rotation: getRotation(layer),
 		blendMode: getLayerBlending(layer.blendMode),
         flip: [100,100],
@@ -527,7 +585,9 @@ function getBoolean(layer, parentFrame, boolType, isMultipath) {
         console.log('run getCompoundShapes' )
         // alert(frame.y + ' : ' + adjFrame.y)
         // layerData.layers = filterTypes(layer, { x: frame.x, y: frame.y - 40, width: frame.width, height: frame.height}, null);
+        boolDepth++;        // operands of a boolean keep their geometry even when unpainted
         layerData.layers = filterTypes(layer, adjFrame, null);
+        boolDepth--;
 
         // realign sub layers
         layerData.layers.forEach(layer => {
@@ -638,6 +698,48 @@ function getEffects(layer, layerData) {
     if (layerData.shadow.length == 0)       { layerData.shadow = null };
     if (layerData.innerShadow.length == 0)  { layerData.innerShadow = null };
     if (layerData.blur.length == 0)         { layerData.blur = null };
+}
+//// layer opacity as a percentage – a fully transparent layer stays at 0
+function getOpacity(layer) {
+    if (layer.opacity == null) { return 100 }
+
+    return Math.round(layer.opacity * 100);
+}
+//// does the paint list (fills or strokes) put any pixels on screen?
+function hasVisiblePaint(paints) {
+    if (!paints || !paints.length) { return false }
+
+    for (var i = 0; i < paints.length; i++) {
+        var paint = paints[i];
+        if (paint.visible === false) { continue }
+        if (paint.opacity === 0) { continue }
+        return true;
+    }
+    return false;
+}
+//// does the layer have an enabled effect of a given type?
+function hasVisibleEffect(layer, opt_type) {
+    var effects = layer.effects;
+    if (!effects || !effects.length) { return false }
+
+    for (var i = 0; i < effects.length; i++) {
+        if (effects[i].visible === false) { continue }
+        if (opt_type && effects[i].type != opt_type) { continue }
+        return true;
+    }
+    return false;
+}
+//// a layer that paints nothing would still build an empty shape layer in Ae,
+//// so those get dropped. Masks and boolean operands are kept – they don't
+//// paint anything themselves but they still contribute geometry.
+function drawsNothing(layer) {
+    if (layer.isMask) { return false }
+    if (boolDepth > 0) { return false }
+    if (hasVisiblePaint(layer.fills)) { return false }
+    if (hasVisiblePaint(layer.strokes) && layer.strokeWeight !== 0) { return false }
+    if (hasVisibleEffect(layer)) { return false }
+
+    return true;
 }
 function getBoolType (layer) {
     var boolType = layer.booleanOperation;
