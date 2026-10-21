@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERSION=$(node -p "require('$SCRIPT_DIR/Ae/AEUX/package.json').version" 2>/dev/null || echo "0.0.0")
 OUT_DIR="$SCRIPT_DIR/.package-build"
 ZIP_NAME="AEUX_$VERSION.zip"
+ZXP_NAME="AEUX_$VERSION.zxp"
 
 echo "=== Building AEUX v$VERSION ==="
 echo ""
@@ -33,7 +34,9 @@ echo "  Done."
 # ── Assemble distributable ────────────────────────────────────────────────────
 echo ""
 echo "Assembling distributable..."
-rm -rf "$OUT_DIR"
+# zip -r adds to an existing archive rather than replacing it, and a leftover
+# ZXP would get shipped even if this run doesn't sign one
+rm -rf "$OUT_DIR" "$SCRIPT_DIR/$ZIP_NAME" "$SCRIPT_DIR/$ZXP_NAME"
 mkdir -p "$OUT_DIR"
 
 # After Effects extension (the whole folder goes into CEP/extensions/)
@@ -52,6 +55,11 @@ rm -rf "$OUT_DIR/AEUX/node_modules" \
        "$OUT_DIR/AEUX/README.md"
 find "$OUT_DIR/AEUX/src" -mindepth 1 -maxdepth 1 ! -name host -exec rm -rf {} +
 rm -f "$OUT_DIR/AEUX/src/host/AEFT/host.ts" "$OUT_DIR/AEUX/src/host/AEFT/tsconfig.json"
+# The dotfiles are bombino/git config, plus .debug, which opens a remote
+# debugging port in every install. ZXPSignCmd (the Windows build at least)
+# signs dotfiles but leaves them out of the archive, so a ZXP built with them
+# fails verification.
+find "$OUT_DIR/AEUX" -name '.*' -exec rm -rf {} +
 
 # a package missing either of those installs cleanly and then does nothing,
 # so fail here instead of shipping it
@@ -73,6 +81,45 @@ cp "$SCRIPT_DIR/install-aeux-windows.bat" "$OUT_DIR/"
 cp "$SCRIPT_DIR/INSTALL.md" "$OUT_DIR/"
 chmod +x "$OUT_DIR/install-mac.sh"
 
+# ── Sign the After Effects extension as a ZXP ─────────────────────────────────
+# ZXPSignCmd is Adobe's signing tool, published for macOS and Windows only:
+# https://github.com/Adobe-CEP/CEP-Resources/tree/master/ZXPSignCMD
+# Put it on PATH or point ZXPSIGNCMD at it; elsewhere a Windows .exe runs under
+# wine. Without it the zip is built as before, just without the ZXP.
+ZXPSIGN=()
+if [ -n "$ZXPSIGNCMD" ]; then
+  ZXPSIGN=("$ZXPSIGNCMD")
+  case "$ZXPSIGNCMD:$(uname -s)" in
+    *.exe:MINGW*|*.exe:MSYS*|*.exe:CYGWIN*) ;;
+    *.exe:*) ZXPSIGN=(wine "$ZXPSIGNCMD") ;;
+  esac
+elif command -v ZXPSignCmd >/dev/null 2>&1; then
+  ZXPSIGN=(ZXPSignCmd)
+fi
+
+echo ""
+if [ ${#ZXPSIGN[@]} -eq 0 ]; then
+  echo "ZXPSignCmd not found, skipping the ZXP. Set ZXPSIGNCMD to build one."
+else
+  echo "Signing $ZXP_NAME..."
+  # paths stay relative: under wine, ZXPSignCmd rejects absolute Unix paths
+  cd "$OUT_DIR"
+  # ZXP installers accept a self-signed cert, so a throwaway one will do
+  CERT_PASS=aeux
+  "${ZXPSIGN[@]}" -selfSignedCert US CA AEUX AEUX "$CERT_PASS" cert.p12 >/dev/null
+  # a timestamped signature stays valid after the cert expires; an untimestamped
+  # one stops loading in After Effects on that date
+  if ! "${ZXPSIGN[@]}" -sign AEUX "$ZXP_NAME" cert.p12 "$CERT_PASS" -tsa http://timestamp.digicert.com; then
+    echo "  Couldn't reach the timestamp server, signing without one."
+    echo "  This ZXP stops loading when its certificate expires."
+    "${ZXPSIGN[@]}" -sign AEUX "$ZXP_NAME" cert.p12 "$CERT_PASS"
+  fi
+  # .rnd is the random seed OpenSSL leaves behind when it makes the cert
+  rm -f cert.p12 .rnd
+  "${ZXPSIGN[@]}" -verify "$ZXP_NAME"
+  cp "$ZXP_NAME" "$SCRIPT_DIR/"
+fi
+
 # ── Create zip ────────────────────────────────────────────────────────────────
 cd "$OUT_DIR"
 zip -r "$SCRIPT_DIR/$ZIP_NAME" . -x "*.DS_Store"
@@ -80,7 +127,13 @@ rm -rf "$OUT_DIR"
 
 echo ""
 echo "Done! Created: $ZIP_NAME"
+if [ -f "$SCRIPT_DIR/$ZXP_NAME" ]; then
+  echo "               $ZXP_NAME (also inside the zip)"
+fi
 echo ""
-echo "Send this file to colleagues. They:"
+echo "Send the zip to colleagues. They:"
 echo "  Mac:     double-click the zip, then run install-mac.sh"
 echo "  Windows: double-click the zip, then run install-aeux-windows.bat"
+if [ -f "$SCRIPT_DIR/$ZXP_NAME" ]; then
+  echo "  or open the .zxp with a ZXP installer (see INSTALL.md)"
+fi

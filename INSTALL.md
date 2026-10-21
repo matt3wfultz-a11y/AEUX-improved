@@ -15,6 +15,18 @@ After running the installer, **restart After Effects** and open **Window > Exten
 
 ---
 
+## ZXP install (After Effects)
+
+If the zip has a signed `AEUX_<version>.zxp`, you can install with a ZXP installer instead of the script:
+
+1. Install a ZXP installer such as [ZXP Installer](https://aescripts.com/learn/zxp-installer/) (free) or [Anastasiy's Extension Manager](https://install.anastasiy.com/).
+2. Quit After Effects, then open the `.zxp` with the installer (or drag it onto the installer's window).
+3. Open After Effects → **Window > Extensions > AEUX**.
+
+If the panel opens blank, run the install script for your OS as well. This is a [known Adobe issue](https://github.com/Adobe-CEP/CEP-Resources/blob/master/ZXPSignCMD/KnownIssue2024.md) with ZXPs, and the CEP debug setting the script turns on works around it.
+
+---
+
 ## Manual install (After Effects)
 
 If you prefer to install manually or the script doesn't work:
