@@ -100,8 +100,17 @@ var AEUX = (function () {
                 return JSON.stringify(null);
             }
             returnMessage = [];
+            var defaults = { parametrics: true, compScale: 1, newComp: true, precompGroups: false, frameRate: 60, duration: 5 };
+            prefs = {};
+            for (var key in defaults) {
+                prefs[key] = defaults[key];
+            }
             if (compObj.prefs) {
-                prefs = compObj.prefs;
+                for (var key in compObj.prefs) {
+                    if (compObj.prefs.hasOwnProperty(key) && compObj.prefs[key] !== undefined && compObj.prefs[key] !== null) {
+                        prefs[key] = compObj.prefs[key];
+                    }
+                }
             }
             folderPath = compObj.layerData[0].folderPath;
             var importedLayerCode = compObj.layerData;
@@ -144,7 +153,7 @@ var AEUX = (function () {
             app.executeCommand(2771);
         }
         catch (e) {
-            alert(e.toString() + "\nError on line: " + e.line.toString());
+            alert(e.toString() + "\nError on line: " + (e && e.line != null ? e.line : "?"));
             try {
                 tempComp.remove();
             }
@@ -319,6 +328,10 @@ var AEUX = (function () {
         }
         catch (e) {
             returnMessage.push('Text layer "' + (layer && layer.name ? layer.name : 'unknown') + '": ' + e.toString());
+            try {
+                r.remove();
+            }
+            catch (e2) { }
         }
         function setTextFill() {
             if (layer.fill != null) {
@@ -338,9 +351,14 @@ var AEUX = (function () {
         }
         function setTextStroke() {
             if (layer.stroke !== null && layer.stroke.length > 0) {
-                var stroke = layer.stroke[0];
-                textDoc.applyStroke = (stroke.enabled == 1);
-                textDoc.strokeColor = [stroke.color[0], stroke.color[1], stroke.color[2]];
+                var stroke = layer.stroke[layer.stroke.length - 1];
+                var strokeColor = stroke.color;
+                if (stroke.type == 'gradient') {
+                    strokeColor = stroke.gradient.points[0].color;
+                    returnMessage.push(1);
+                }
+                textDoc.applyStroke = (stroke.enabled !== false);
+                textDoc.strokeColor = [strokeColor[0], strokeColor[1], strokeColor[2]];
                 textDoc.strokeWidth = (stroke.width > 0) ? stroke.width : 0;
                 if (stroke.opacity < 100) {
                     var textOpacity = r('ADBE Text Properties')(4).addProperty('ADBE Text Animator');
@@ -373,7 +391,7 @@ var AEUX = (function () {
                     justificationOffset = layer.frame.width / 2;
                     break;
                 case 3:
-                    paraStyle = ParagraphJustification.FULL_JUSTIFY_LASTLINE_FULL;
+                    paraStyle = ParagraphJustification.FULL_JUSTIFY_LASTLINE_LEFT;
                     justificationOffset = layer.frame.width / 2;
                     break;
                 default: paraStyle = ParagraphJustification.LEFT_JUSTIFY;
@@ -669,20 +687,20 @@ var AEUX = (function () {
                 if (shape.type === 'CompoundShape') {
                     var subGroup = group(2).addProperty('ADBE Vector Group');
                     subGroup.name = shape.name;
-                    subGroup('ADBE Vector Transform Group')('ADBE Vector Position').setValue(posOffset + [shape.frame.x, shape.frame.y]);
+                    subGroup('ADBE Vector Transform Group')('ADBE Vector Position').setValue([posOffset[0] + shape.frame.x, posOffset[1] + shape.frame.y]);
                     createCompoundShapes(subGroup, shape);
                     continue;
                 }
                 if (shape.type === 'Rect' && prefs.parametrics) {
                     var rect = group(2).addProperty('ADBE Vector Shape - Rect');
                     rect('ADBE Vector Rect Size').setValue([shape.frame.width, shape.frame.height]);
-                    rect('ADBE Vector Rect Position').setValue(posOffset + [shape.frame.x, shape.frame.y]);
+                    rect('ADBE Vector Rect Position').setValue([posOffset[0] + shape.frame.x, posOffset[1] + shape.frame.y]);
                     rect('ADBE Vector Rect Roundness').setValue(shape.roundness);
                 }
                 if (shape.type === 'Ellipse' && prefs.parametrics) {
                     var ellipse = group(2).addProperty('ADBE Vector Shape - Ellipse');
                     ellipse('ADBE Vector Ellipse Size').setValue([shape.frame.width, shape.frame.height]);
-                    ellipse('ADBE Vector Ellipse Position').setValue(posOffset + [shape.frame.x, shape.frame.y]);
+                    ellipse('ADBE Vector Ellipse Position').setValue([posOffset[0] + shape.frame.x, posOffset[1] + shape.frame.y]);
                 }
                 if (shape.type === 'Path' || !prefs.parametrics) {
                     if (!shape.path || !shape.path.points || shape.path.points.length < 1) {
@@ -999,6 +1017,9 @@ var AEUX = (function () {
                 if (fillData.blendMode) {
                     fill("ADBE Vector Blend Mode").setValue(fillData.blendMode);
                 }
+                if (layer.fillRule == 2) {
+                    fill("ADBE Vector Fill Rule").setValue(2);
+                }
                 if (fillData.type == 'gradient') {
                     applyGradientColors(fill, fillData.gradient);
                 }
@@ -1243,15 +1264,14 @@ var AEUX = (function () {
         }
     }
     function addDropShadow(r, layer) {
-        var layerScaleFactor = 100 / r("ADBE Transform Group")("ADBE Scale").value[0];
+        var layerScaleFactor = Math.abs(100 / r("ADBE Transform Group")("ADBE Scale").value[0]);
         try {
             if (layer.shadow != null) {
                 for (var i = layer.shadow.length - 1; i >= 0; i--) {
                     var x = layer.shadow[i].position[0] * compMult;
                     var y = layer.shadow[i].position[1] * compMult;
                     var shadowDistance = Math.sqrt((x * x) + (y * y));
-                    var shadowAngle = 90 + (Math.atan(y / x) * (180 / Math.PI));
-                    shadowAngle = (isNaN(shadowAngle)) ? 180 : shadowAngle;
+                    var shadowAngle = (Math.atan2(x, -y) * (180 / Math.PI) + 360) % 360;
                     var shadowEffect = r("ADBE Effect Parade").addProperty("ADBE Drop Shadow");
                     shadowEffect("ADBE Drop Shadow-0001").setValue(layer.shadow[i].color);
                     shadowEffect("ADBE Drop Shadow-0002").setValue(layer.shadow[i].color[3] * 255);
@@ -1262,22 +1282,23 @@ var AEUX = (function () {
             }
         }
         catch (e) {
-            alert(e.toString() + "\nError on line: " + e.line.toString());
+            alert(e.toString() + "\nError on line: " + (e && e.line != null ? e.line : "?"));
         }
     }
     function addBlur(r, layer, ignoreCompMult) {
         if (layer.blur != null) {
-            compMult = (ignoreCompMult) ? 1 : compMult;
+            var mult = (ignoreCompMult) ? 1 : compMult;
+            var blur;
             for (var i = layer.blur.length - 1; i >= 0; i--) {
                 if (layer.blur[i].type == 0) {
                     blur = r.property('Effects').addProperty('ADBE Gaussian Blur 2');
-                    blur.property('ADBE Gaussian Blur 2-0001').setValue(layer.blur[i].radius * compMult);
+                    blur.property('ADBE Gaussian Blur 2-0001').setValue(layer.blur[i].radius * mult);
                     return;
                 }
                 if (layer.blur[i].type == 1) {
                     blur = r.property('Effects').addProperty('ADBE Motion Blur');
                     blur.property('ADBE Motion Blur-0001').setValue(layer.blur[i].direction);
-                    blur.property('ADBE Motion Blur-0002').setValue(layer.blur[i].radius * compMult);
+                    blur.property('ADBE Motion Blur-0002').setValue(layer.blur[i].radius * mult);
                     return;
                 }
                 if (layer.blur[i].type == 2) {
@@ -1291,7 +1312,7 @@ var AEUX = (function () {
         }
     }
     function addBgBlur(r, layer, ignoreCompMult) {
-        compMult = (ignoreCompMult) ? 1 : compMult;
+        var mult = (ignoreCompMult) ? 1 : compMult;
         if (layer.bgBlur != null) {
             var newLayer = r.duplicate();
             newLayer.name = '\u25A8 ' + r.name;
@@ -1299,7 +1320,23 @@ var AEUX = (function () {
             newLayer.adjustmentLayer = true;
             newLayer.parent = r;
             try {
-                newLayer("ADBE Root Vectors Group")(1)("ADBE Vectors Group")(2)("ADBE Vector Fill Opacity").setValue(100);
+                var bgContents = newLayer("ADBE Root Vectors Group")(1)("ADBE Vectors Group");
+                for (var f = 1; f <= bgContents.numProperties; f++) {
+                    if (bgContents(f).matchName == 'ADBE Vector Graphic - Fill' || bgContents(f).matchName == 'ADBE Vector Graphic - G-Fill') {
+                        bgContents(f)("ADBE Vector Fill Opacity").setValue(100);
+                    }
+                }
+            }
+            catch (e) { }
+            try {
+                var bgEffects = newLayer("ADBE Effect Parade");
+                for (var fx = bgEffects.numProperties; fx >= 1; fx--) {
+                    bgEffects(fx).remove();
+                }
+            }
+            catch (e) { }
+            try {
+                newLayer("ADBE Layer Styles").enabled = false;
             }
             catch (e) { }
             try {
@@ -1307,7 +1344,7 @@ var AEUX = (function () {
             }
             catch (error) { }
             var blur = newLayer.property('Effects').addProperty('ADBE Gaussian Blur 2');
-            blur.property('ADBE Gaussian Blur 2-0001').setValue(layer.bgBlur * compMult);
+            blur.property('ADBE Gaussian Blur 2-0001').setValue(layer.bgBlur * mult);
         }
     }
     function addInnerShadow(r, layer) {
@@ -1315,9 +1352,10 @@ var AEUX = (function () {
             var x = layer.innerShadow[0].position[0] * compMult;
             var y = layer.innerShadow[0].position[1] * compMult;
             var shadowDistance = Math.sqrt((x * x) + (y * y));
-            var shadowAngle = 180 - (Math.atan(y / x) * (180 / Math.PI));
-            shadowAngle = (isNaN(shadowAngle)) ? 180 : shadowAngle;
-            createAndApplyShadowFfx(r);
+            var shadowAngle = (Math.atan2(y, -x) * (180 / Math.PI) + 360) % 360;
+            if (!createAndApplyShadowFfx(r)) {
+                return;
+            }
             r("ADBE Layer Styles")(3)("innerShadow/mode2").setValue(1);
             r("ADBE Layer Styles")(3)("innerShadow/color").setValue(layer.innerShadow[0].color);
             r("ADBE Layer Styles")(3)("innerShadow/opacity").setValue(layer.innerShadow[0].color[3] * 100);
@@ -1333,9 +1371,14 @@ var AEUX = (function () {
         if (!shadowPresetFile.exists) {
             shadowPresetFile = createFile(binaryString, fileName);
         }
+        if (shadowPresetFile == null) {
+            returnMessage.push(5);
+            return false;
+        }
         layer.selected = true;
         layer.applyPreset(shadowPresetFile);
         layer.selected = false;
+        return true;
     }
     function isAllowWriteFiles() {
         var securitySetting;
@@ -1349,7 +1392,7 @@ var AEUX = (function () {
     }
     function createFile(str, filename) {
         if (!(isAllowWriteFiles())) {
-            alert('In order to make ' + scriptName + ' work, you need to enable little preference in After Effects: \n\nAllow Scripts to Write Files and Access Network\n\nCheck that box and we\'ll be in business.');
+            alert('In order to make ' + scriptName + ' work, you need to enable little preference in After Effects: \n\nPreferences > Scripting & Expressions > Allow Scripts to Write Files and Access Network\n\nCheck that box and we\'ll be in business.');
             try {
                 app.executeCommand(2359);
             }
@@ -1361,9 +1404,14 @@ var AEUX = (function () {
             }
             ;
         }
+        if (!Folder(ffxFolder).exists) {
+            Folder(ffxFolder).create();
+        }
         var exportFile = new File(ffxFolder + '/' + filename);
         exportFile.encoding = 'BINARY';
-        exportFile.open('w');
+        if (!exportFile.open('w')) {
+            return null;
+        }
         exportFile.write(str);
         exportFile.close();
         return exportFile;
@@ -1712,7 +1760,7 @@ var AEUX = (function () {
             return filePath.absoluteURI;
         }
         catch (e) {
-            alert(e.toString() + "\nError on line: " + e.line.toString());
+            alert(e.toString() + "\nError on line: " + (e && e.line != null ? e.line : "?"));
         }
     }
     function downloadUpdateDialog() {

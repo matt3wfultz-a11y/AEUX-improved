@@ -1,6 +1,7 @@
 {
   "compileOnSave": true,
   "compilerOptions": {
+    "target": "ES3",
     "outFile": "./host.jsx",
     "allowJs": true,
     "noLib": true,

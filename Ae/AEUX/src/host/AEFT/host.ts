@@ -87,7 +87,16 @@ function buildLayers(compObj) {
     }
 
     returnMessage = [];
-    if (compObj.prefs) { prefs = compObj.prefs }
+    // the panel sends {} until its settings have been saved once (e.g. sending from
+    // Figma before the panel was ever opened on a new computer), so fill the gaps
+    var defaults = { parametrics: true, compScale: 1, newComp: true, precompGroups: false, frameRate: 60, duration: 5 };
+    prefs = {};
+    for (var key in defaults) { prefs[key] = defaults[key]; }
+    if (compObj.prefs) {
+        for (var key in compObj.prefs) {
+            if (compObj.prefs.hasOwnProperty(key) && compObj.prefs[key] !== undefined && compObj.prefs[key] !== null) { prefs[key] = compObj.prefs[key]; }
+        }
+    }
     
     folderPath = compObj.layerData[0].folderPath;
     // var importedLayerCode = compObj;
@@ -151,7 +160,7 @@ function buildLayers(compObj) {
     } catch(e) {
         // alert('Gotta paste some Sketch2AE code');		// non-debug error
         // debug error
-        alert(e.toString() + "\nError on line: " + e.line.toString());
+        alert(e.toString() + "\nError on line: " + (e && e.line != null ? e.line : "?"));
         try { tempComp.remove(); } catch(e) {}
         progressDialog.hide();
     } finally {
@@ -415,6 +424,8 @@ function aeText(layer, opt_parent) {
 
     } catch(e) {
         returnMessage.push('Text layer "' + (layer && layer.name ? layer.name : 'unknown') + '": ' + e.toString());
+        // a half-built text layer sits unstyled and unpositioned in the comp
+        try { r.remove(); } catch (e2) {}
     }
 
 
@@ -444,11 +455,17 @@ function aeText(layer, opt_parent) {
         if (layer.stroke !== null && layer.stroke.length > 0) {
 
             /// get the top stroke in the list
-            var stroke = layer.stroke[0];
+            var stroke = layer.stroke[layer.stroke.length - 1];
+            // text strokes can't be gradients in AE
+            var strokeColor = stroke.color;
+            if (stroke.type == 'gradient') {
+                strokeColor = stroke.gradient.points[0].color;
+                returnMessage.push(1);
+            }
             /// add stroke if enabled in Sketch
-            textDoc.applyStroke = (stroke.enabled == 1);
+            textDoc.applyStroke = (stroke.enabled !== false);
             /// set stroke color
-            textDoc.strokeColor = [stroke.color[0], stroke.color[1], stroke.color[2]];
+            textDoc.strokeColor = [strokeColor[0], strokeColor[1], strokeColor[2]];
             /// set stroke width
             textDoc.strokeWidth = (stroke.width > 0) ? stroke.width : 0;
 
@@ -490,7 +507,7 @@ function aeText(layer, opt_parent) {
                 justificationOffset = layer.frame.width/2;
                 break;
             case 3:
-                paraStyle = ParagraphJustification.FULL_JUSTIFY_LASTLINE_FULL;
+                paraStyle = ParagraphJustification.FULL_JUSTIFY_LASTLINE_LEFT;
                 justificationOffset = layer.frame.width/2;
                 break;
             default: paraStyle = ParagraphJustification.LEFT_JUSTIFY;
@@ -1013,7 +1030,7 @@ function aeCompound(layer, opt_parent) {
             if (shape.type === 'CompoundShape') {
                 var subGroup = group(2).addProperty('ADBE Vector Group');
                     subGroup.name = shape.name;
-                    subGroup('ADBE Vector Transform Group')('ADBE Vector Position').setValue(posOffset + [shape.frame.x, shape.frame.y]);
+                    subGroup('ADBE Vector Transform Group')('ADBE Vector Position').setValue([posOffset[0] + shape.frame.x, posOffset[1] + shape.frame.y]);
                 createCompoundShapes(subGroup, shape);
                 continue;
             }
@@ -1021,14 +1038,14 @@ function aeCompound(layer, opt_parent) {
             if (shape.type === 'Rect' && prefs.parametrics) {
                 var rect = group(2).addProperty('ADBE Vector Shape - Rect');
                     rect('ADBE Vector Rect Size').setValue([shape.frame.width, shape.frame.height]);
-                    rect('ADBE Vector Rect Position').setValue(posOffset + [shape.frame.x, shape.frame.y]);
+                    rect('ADBE Vector Rect Position').setValue([posOffset[0] + shape.frame.x, posOffset[1] + shape.frame.y]);
                     rect('ADBE Vector Rect Roundness').setValue(shape.roundness);
             }
             // if an ellipse
             if (shape.type === 'Ellipse' && prefs.parametrics){
                 var ellipse = group(2).addProperty('ADBE Vector Shape - Ellipse');
                     ellipse('ADBE Vector Ellipse Size').setValue([shape.frame.width, shape.frame.height]);
-                    ellipse('ADBE Vector Ellipse Position').setValue(posOffset + [shape.frame.x, shape.frame.y]);
+                    ellipse('ADBE Vector Ellipse Position').setValue([posOffset[0] + shape.frame.x, posOffset[1] + shape.frame.y]);
             }
             // if a path
             if (shape.type === 'Path' || !prefs.parametrics) {
@@ -1510,6 +1527,7 @@ function addFill(r, layer) {
             }
             fill.enabled = (fillData.enabled !== false);
             if (fillData.blendMode) { fill("ADBE Vector Blend Mode").setValue(fillData.blendMode); }
+            if (layer.fillRule == 2) { fill("ADBE Vector Fill Rule").setValue(2); }     // even-odd
 
             if (fillData.type == 'gradient') { applyGradientColors(fill, fillData.gradient); }
         }
@@ -1806,7 +1824,7 @@ function setLayerBlendMode(r, layer) {
 
 //// add drop shadow effect
 function addDropShadow(r, layer) {
-    let layerScaleFactor = 100 / r("ADBE Transform Group")("ADBE Scale").value[0]
+    let layerScaleFactor = Math.abs(100 / r("ADBE Transform Group")("ADBE Scale").value[0])
     try {
 
     if (layer.shadow != null) {
@@ -1817,9 +1835,8 @@ function addDropShadow(r, layer) {
             var y = layer.shadow[i].position[1]*compMult;
             // pythagorean theorem dude
             var shadowDistance = Math.sqrt((x * x) + (y * y));
-            var shadowAngle = 90+(Math.atan(y/x) * (180/Math.PI));
-                // error catch to just define straight down
-                shadowAngle = (isNaN(shadowAngle)) ? 180 : shadowAngle;
+            // AE direction is clockwise from up; atan(y/x) flipped any shadow with a negative x
+            var shadowAngle = (Math.atan2(x, -y) * (180/Math.PI) + 360) % 360;
 
             // add drop shadow effect
             var shadowEffect = r("ADBE Effect Parade").addProperty("ADBE Drop Shadow");
@@ -1831,27 +1848,29 @@ function addDropShadow(r, layer) {
         }
     }
     }catch(e) {
-        alert(e.toString() + "\nError on line: " + e.line.toString());
+        alert(e.toString() + "\nError on line: " + (e && e.line != null ? e.line : "?"));
     }
 }
 
 //// add blur effect
 function addBlur(r, layer, ignoreCompMult?) {
     if (layer.blur != null) {
-        compMult = (ignoreCompMult) ? 1 : compMult
+        // local: assigning the global here shrank every layer built after an image
+        var mult = (ignoreCompMult) ? 1 : compMult;
+        var blur;
         // loop through multiple blur objects
         for (var i = layer.blur.length-1; i >= 0; i--) {
             /// Gaussian Blur
             if (layer.blur[i].type == 0) {
                 blur = r.property('Effects').addProperty('ADBE Gaussian Blur 2');
-                blur.property('ADBE Gaussian Blur 2-0001').setValue(layer.blur[i].radius * compMult);
+                blur.property('ADBE Gaussian Blur 2-0001').setValue(layer.blur[i].radius * mult);
                 return;
             }
             /// Motion Blur
             if (layer.blur[i].type == 1) {
                 blur = r.property('Effects').addProperty('ADBE Motion Blur');
                 blur.property('ADBE Motion Blur-0001').setValue(layer.blur[i].direction);
-                blur.property('ADBE Motion Blur-0002').setValue(layer.blur[i].radius * compMult);
+                blur.property('ADBE Motion Blur-0002').setValue(layer.blur[i].radius * mult);
                 return;
             }
             /// Radial Blur
@@ -1868,18 +1887,32 @@ function addBlur(r, layer, ignoreCompMult?) {
 
 //// add bg blur effect 
 function addBgBlur(r, layer, ignoreCompMult?) {
-    compMult = (ignoreCompMult) ? 1 : compMult
+    var mult = (ignoreCompMult) ? 1 : compMult;
     if (layer.bgBlur != null) {
         let newLayer = r.duplicate()
         newLayer.name = '\u25A8 ' + r.name
         newLayer.moveAfter(r)
         newLayer.adjustmentLayer = true
         newLayer.parent = r
-        try { newLayer("ADBE Root Vectors Group")(1)("ADBE Vectors Group")(2)("ADBE Vector Fill Opacity").setValue(100) } catch (e) { }
+        // the blur should cover the whole shape, not just as much as the fill's alpha
+        try {
+            var bgContents = newLayer("ADBE Root Vectors Group")(1)("ADBE Vectors Group");
+            for (var f = 1; f <= bgContents.numProperties; f++) {
+                if (bgContents(f).matchName == 'ADBE Vector Graphic - Fill' || bgContents(f).matchName == 'ADBE Vector Graphic - G-Fill') {
+                    bgContents(f)("ADBE Vector Fill Opacity").setValue(100);
+                }
+            }
+        } catch (e) { }
+        // the copy also carried the layer's shadows and blurs onto what's behind it
+        try {
+            var bgEffects = newLayer("ADBE Effect Parade");
+            for (var fx = bgEffects.numProperties; fx >= 1; fx--) { bgEffects(fx).remove(); }
+        } catch (e) { }
+        try { newLayer("ADBE Layer Styles").enabled = false; } catch (e) { }
         try { newLayer("ADBE Text Properties")("ADBE Text Animators")(1)("ADBE Text Animator Properties")("ADBE Text Fill Opacity").setValue(100) } catch (error) { }
 
         let blur = newLayer.property('Effects').addProperty('ADBE Gaussian Blur 2');
-        blur.property('ADBE Gaussian Blur 2-0001').setValue(layer.bgBlur * compMult);
+        blur.property('ADBE Gaussian Blur 2-0001').setValue(layer.bgBlur * mult);
     }
 }
 //// update settings of createAndApplyShadowFfx()
@@ -1892,12 +1925,11 @@ function addInnerShadow(r, layer) {
         var y = layer.innerShadow[0].position[1]*compMult;
         var shadowDistance = Math.sqrt((x * x) + (y * y));
         // pythagorean theorem dude
-        var shadowAngle = 180-(Math.atan(y/x) * (180/Math.PI));
-            // error catch to just define straight down
-            shadowAngle = (isNaN(shadowAngle)) ? 180 : shadowAngle;
+        // lighting angle points at the light, counter-clockwise from the right
+        var shadowAngle = (Math.atan2(y, -x) * (180/Math.PI) + 360) % 360;
 
         // create ffx file
-        createAndApplyShadowFfx(r);
+        if (!createAndApplyShadowFfx(r)) { return; }
         // set inner shadow properties
         r("ADBE Layer Styles")(3)("innerShadow/mode2").setValue(1);
         r("ADBE Layer Styles")(3)("innerShadow/color").setValue(layer.innerShadow[0].color);
@@ -1918,10 +1950,15 @@ function createAndApplyShadowFfx(layer) {
     if ( !shadowPresetFile.exists ) {
         shadowPresetFile = createFile(binaryString, fileName);
     }
+    if (shadowPresetFile == null) {
+        returnMessage.push(5);		// 'Can't save preset file'
+        return false;
+    }
 
     layer.selected = true;
     layer.applyPreset(shadowPresetFile);
     layer.selected = false;
+    return true;
 }
 
 
@@ -1944,7 +1981,7 @@ function isAllowWriteFiles() {
 function createFile(str, filename) {
     /// check if scripts are allowed to write files
     if (!(isAllowWriteFiles()))  {
-        alert ('In order to make ' + scriptName + ' work, you need to enable little preference in After Effects: \n\nAllow Scripts to Write Files and Access Network\n\nCheck that box and we\'ll be in business.');
+        alert ('In order to make ' + scriptName + ' work, you need to enable little preference in After Effects: \n\nPreferences > Scripting & Expressions > Allow Scripts to Write Files and Access Network\n\nCheck that box and we\'ll be in business.');
         try{
             app.executeCommand(2359);
         } catch (e) {
@@ -1953,10 +1990,13 @@ function createFile(str, filename) {
         if (!isAllowWriteFiles()) { return null };
     }
 
+    // the folder is made at startup, which fails if writing wasn't allowed yet
+    if (!Folder(ffxFolder).exists) { Folder(ffxFolder).create(); }
+
     /// create file
     var exportFile = new File(ffxFolder + '/' + filename);
         exportFile.encoding = 'BINARY';
-        exportFile.open( 'w' );
+        if (!exportFile.open( 'w' )) { return null; }
         exportFile.write( str );
         exportFile.close();
 
@@ -2421,7 +2461,7 @@ function setFilePath() {
         return filePath.absoluteURI;
     }
     catch (e) {
-        alert(e.toString() + "\nError on line: " + e.line.toString());
+        alert(e.toString() + "\nError on line: " + (e && e.line != null ? e.line : "?"));
     }
 }
 function downloadUpdateDialog() {

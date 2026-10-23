@@ -44,10 +44,11 @@ echo.
 
 :: ── Figma plugin ─────────────────────────────────────────────────────────────
 
-if exist "%~dp0AEUX-Figma" (
+set "FIGMA=%~dp0AEUX-Figma"
+if exist "%FIGMA%" (
   echo Figma plugin:
   echo   1. In Figma, go to Plugins ^> Development ^> Import plugin from manifest...
-  echo   2. Navigate to: %~dp0AEUX-Figma
+  echo   2. Navigate to: "%FIGMA%"
   echo   3. Select manifest.json
   echo.
 )

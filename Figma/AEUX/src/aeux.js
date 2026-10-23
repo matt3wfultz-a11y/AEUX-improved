@@ -140,6 +140,8 @@ function filterTypes(figmaData, opt_parentFrame, boolType) {
 //// get layer data: SHAPE
 function getShape(layer, parentFrame, boolType) {
     var layerType = getShapeType(layer);
+    // read before getPath, which merges multiple vector paths and drops the rule
+    var fillRule = getFillRule(layer);
     var frame = getFrame(layer, parentFrame);
 
     // adjust if a compound shape
@@ -158,7 +160,9 @@ function getShape(layer, parentFrame, boolType) {
         console.log('multipath');
 
         // boolOffset = null
-        return getBoolean(layer, parentFrame, null, true);
+        var multi = getBoolean(layer, parentFrame, null, true);
+        if (multi) { multi.fillRule = fillRule }
+        return multi;
     }
     // console.log(layer.relativeTransform[0][0]);
 
@@ -169,6 +173,7 @@ function getShape(layer, parentFrame, boolType) {
 		frame: frame,
         fill: getFills(layer, parentFrame),
         stroke: getStrokes(layer),
+        fillRule: fillRule,
         isVisible: (layer.visible !== false),
 		path: path,
 		roundness: Math.round(layer.cornerRadius) || 0,
@@ -278,9 +283,11 @@ function getText(layer, parentFrame) {
         // console.log(fills);
         
         if (fills.length > 0) {
-            var fillColor = fills[0].color
-            if (fills[0].gradient != undefined) {
-                fillColor = fills[0].gradient.points[0].color
+            // the last paint is the one on top
+            var top = fills[fills.length - 1]
+            var fillColor = top.color
+            if (top.gradient != undefined) {
+                fillColor = top.gradient.points[0].color
             }
             return fillColor
         } else {
@@ -1086,6 +1093,14 @@ function getShapeType(layer) {
     if ( layer.type == 'ELLIPSE' ) { return 'Ellipse' }
     // if ( layer.type == 'STAR' || layer.type == 'POLYGON') { return 'Star' }
     return 'Path';
+}
+//// AE Fill Rule: 1 non-zero, 2 even-odd
+function getFillRule(layer) {
+    var paths = layer.vectorPaths || layer.fillGeometry || []
+    for (var i = 0; i < paths.length; i++) {
+        if (paths[i].windingRule == 'EVENODD') { return 2 }
+    }
+    return 1
 }
 //// get layer data: SHAPE TYPE
 function getFillType(type) {

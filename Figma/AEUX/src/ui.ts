@@ -133,16 +133,7 @@ onmessage = (event) => {
         })
         .then(json => {
             console.log(json)
-            let lyrs = json.layerCount
-            let skipped = Array.isArray(json.msg)
-                ? json.msg.filter((m: any) => typeof m === 'string').length
-                : 0
-            let footerText = (lyrs == 1) ? lyrs + ' layer sent to Ae' : lyrs + ' layers sent to Ae'
-            if (skipped > 0) {
-                footerText += ` (${skipped} skipped)`
-                vm.footerType = 'warning'
-            }
-            setFooterMsg(null, footerText)
+            showBuildResult(json)
         })
         .catch(e => {
             console.error(e)
@@ -191,16 +182,7 @@ onmessage = (event) => {
         })
         .then(json => {
             console.log(json)
-            let lyrs = json.layerCount
-            let skipped = Array.isArray(json.msg)
-                ? json.msg.filter((m: any) => typeof m === 'string').length
-                : 0
-            let footerText = (lyrs == 1) ? lyrs + ' layer sent to Ae' : lyrs + ' layers sent to Ae'
-            if (skipped > 0) {
-                footerText += ` (${skipped} skipped)`
-                vm.footerType = 'warning'
-            }
-            setFooterMsg(null, footerText)
+            showBuildResult(json)
         })
         .catch(e => {
             console.error(e)
@@ -253,6 +235,33 @@ onmessage = (event) => {
     }
 }
 
+//// footer text for what the Ae panel reports back
+// host.ts returns numeric codes for unsupported features and strings for layers it skipped
+const HOST_WARNINGS = {
+    1: 'text gradients came in as solid color',
+    3: 'frame is wider than 30,000px in Ae',
+    4: 'frame is taller than 30,000px in Ae',
+    5: "Ae couldn't save a preset file, check Allow Scripts to Write Files",
+    6: 'some images were missing',
+}
+function showBuildResult(json) {
+    if (!json || typeof json !== 'object') {
+        vm.footerType = 'warning'
+        setFooterMsg(null, 'Ae did not build anything')
+        return
+    }
+    let lyrs = json.layerCount
+    let msgs = Array.isArray(json.msg) ? json.msg : []
+    let skipped = msgs.filter((m: any) => typeof m === 'string').length
+    let warnings = msgs
+        .filter((m: any, i: number) => typeof m === 'number' && HOST_WARNINGS[m] && msgs.indexOf(m) === i)
+        .map((m: any) => HOST_WARNINGS[m])
+    let footerText = (lyrs == 1) ? lyrs + ' layer sent to Ae' : lyrs + ' layers sent to Ae'
+    if (skipped > 0) { footerText += ` (${skipped} skipped)` }
+    if (warnings.length > 0) { footerText += ' · ' + warnings.join(' · ') }
+    if (skipped > 0 || warnings.length > 0) { vm.footerType = 'warning' }
+    setFooterMsg(null, footerText)
+}
 function setFooterMsg(layerCount, action) {
     if (layerCount === null) {
         vm.footerMsg = action

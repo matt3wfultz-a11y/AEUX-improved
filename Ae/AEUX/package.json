@@ -1,10 +1,11 @@
 {
   "name": "aeux",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "private": true,
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
+    "build:host": "tsc -p src/host/AEFT || exit 0",
     "lint": "vue-cli-service lint",
     "sign": "bombino-cmd sign",
     "switch": "bombino-cmd switch",
@@ -41,6 +42,7 @@
     "ora": "^4.0.4",
     "shelljs": "^0.8.5",
     "types-for-adobe": "github:pravdomil/types-for-adobe",
+    "typescript": "4.9.5",
     "vue-template-compiler": "^2.6.11"
   },
   "eslintConfig": {

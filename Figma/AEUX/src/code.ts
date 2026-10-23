@@ -97,7 +97,7 @@ figma.ui.onmessage = message => {
         let refImg = null, tempGroup, parentFrame
         if (prefs.exportRefImage) {         // include a reference image with transfer
             parentFrame = findFrame(figma.currentPage.selection[0])
-            let parentFrameName = parentFrame.name.replace(/\s*(\/|\\)\s*/g, '-').replace(/^\*\s/, '').replace(/^\*/, '')
+            let parentFrameName = sanitizeLayerName(parentFrame.name)
 
             rasterizeList.push(parentFrame.id)
 
@@ -199,7 +199,7 @@ figma.ui.onmessage = message => {
         hasFrameData = false
 
         let parentFrame = findFrame(figma.currentPage.selection[0])
-        let parentFrameName = parentFrame.name.replace(/\s*(\/|\\)\s*/g, '-').replace(/^\*\s/, '').replace(/^\*/, '')
+        let parentFrameName = sanitizeLayerName(parentFrame.name)
 
         rasterizeList.push(parentFrame.id)
 
@@ -306,7 +306,7 @@ function asyncCollectHashes(id, cb) {
             .then(img => {
                 imageHashList.push({
                     hash: figma.createImage(img).hash,
-                    id: `${shape.name.replace(/^\*\s/, '').replace(/^\*/, '')}_${id}`
+                    id: `${sanitizeLayerName(shape.name)}_${id}`
                 })
             })
             .then(() => {
@@ -333,10 +333,7 @@ function nodeToObj (nodes) {
     let arr = [];
 
     // look for the parent frame of everything except regular (non-autoLayout) frames and loose components
-    if (nodes[0] && (
-        (nodes[0].type === 'FRAME' && nodes[0].parent.type === 'PAGE') || 
-        // (nodes[0].type === 'FRAME' && nodes[0].layoutMode === 'NONE') || 
-        (nodes[0].type === 'COMPONENT' && nodes[0].parent.type === 'PAGE' ) )) {            // a frame or a component master outside of a frame is directly selected
+    if (nodes[0] && isArtboard(nodes[0])) {            // a frame or a component master outside of a frame is directly selected
         
             console.log('GOT A FRAME');
         // console.log(nodes[0].children);
@@ -351,7 +348,7 @@ function nodeToObj (nodes) {
         // get the frame data
 
         if (!hasFrameData) {
-            if (node.parent.type === 'PAGE') { return }     // layer is outside of a frame 
+            if (isTopLevel(node)) { return }     // layer is outside of a frame 
 
             // console.log('get the frame data');
             let frame = findFrame(node);
@@ -513,11 +510,18 @@ async function storeImageData(imageHashList, layers, refImg) { // imageHashList 
     }
     
 }
+//// sections only organise the page, so a frame inside one is still top level
+function isTopLevel(node) {
+    return node.parent && (node.parent.type === 'PAGE' || node.parent.type === 'SECTION')
+}
+function isArtboard(node) {
+    return (node.type === 'FRAME' || node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') && isTopLevel(node)
+}
 function findFrame(node) {
     // console.log('node:', node);
     // console.log('node.type:', node.type);
     try {
-        if ((node.type !== 'FRAME' && !(node.type === 'COMPONENT' && node.parent.type === 'PAGE'))
+        if ((node.type !== 'FRAME' && !isArtboard(node))
         || (node.type === 'FRAME' && node.parent.type === 'FRAME')) {
             // if (node.type !== 'FRAME' && node.type !== 'COMPONENT') {                
                 return findFrame(node.parent);

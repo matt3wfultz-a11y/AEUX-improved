@@ -6,12 +6,14 @@ Extract the zip you received, then run the installer for your OS:
 
 | OS      | Run this file              |
 |---------|----------------------------|
-| Mac     | `install-mac.sh`           |
+| Mac     | `install-mac.sh` (in Terminal: type `bash `, drag the file in, press Return) |
 | Windows | `install-aeux-windows.bat` |
 
 The script will automatically copy the After Effects extension to the right location and enable the required CEP setting. It will also print the steps to load the Figma plugin.
 
 After running the installer, **restart After Effects** and open **Window > Extensions > AEUX**.
+
+AEUX writes small preset files to import gradients and inner shadows, so turn on **Preferences > Scripting & Expressions > Allow Scripts to Write Files and Access Network** in After Effects.
 
 ---
 
@@ -39,13 +41,14 @@ If you prefer to install manually or the script doesn't work:
 2. Enable CEP debug mode by running this in Terminal:
    ```sh
    defaults write com.adobe.CSXS.11 PlayerDebugMode 1
+   defaults write com.adobe.CSXS.12 PlayerDebugMode 1
    ```
-   (Repeat for CSXS.9 through CSXS.13 if needed for your Ae version.)
+   (CSXS.11 covers Ae 2021–2024, CSXS.12 covers Ae 2025 and later.)
 3. Restart After Effects → **Window > Extensions > AEUX**.
 
 ### Windows
 1. Run `install-aeux-windows.bat` (handles the registry entry), **or** manually add:
-   - Key: `HKEY_CURRENT_USER\SOFTWARE\Adobe\CSXS.11`
+   - Keys: `HKEY_CURRENT_USER\SOFTWARE\Adobe\CSXS.11` and `...\CSXS.12` (Ae 2025+)
    - Value: `PlayerDebugMode` = `1` (String)
 2. Copy the `AEUX` folder to:
    ```

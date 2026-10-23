@@ -21,6 +21,7 @@ echo ""
 echo "Building After Effects extension..."
 cd "$SCRIPT_DIR/Ae/AEUX"
 npm install --silent
+npm run build:host --silent
 npm run build --silent
 echo "  Done."
 
