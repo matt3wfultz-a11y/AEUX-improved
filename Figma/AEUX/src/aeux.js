@@ -155,6 +155,18 @@ function getShape(layer, parentFrame, boolType) {
     // }
     var path = getPath(layer, frame);
     // console.log('path', path);
+    var rotation = getRotation(layer);
+    var flip = (boolType) ? [100, 100] : getFlipMultiplier(layer);
+
+    // a boolean's operands are built straight into the compound's group, so
+    // their rotation and flip go into the path itself
+    var m = layer.relativeTransform;
+    if (boolDepth > 0 && path && path.points && (m[0][0] != 1 || m[0][1] != 0 || m[1][0] != 0 || m[1][1] != 1)) {
+        path = bakePathTransform(path, m, layer.width || 0, layer.height || 0);
+        layerType = 'Path';
+        rotation = 0;
+        flip = [100, 100];
+    }
 
     if (path == 'multiPath') {
         console.log('multipath');
@@ -179,8 +191,8 @@ function getShape(layer, parentFrame, boolType) {
 		roundness: Math.round(layer.cornerRadius) || 0,
 		// roundness: (layer.type == 'RECTANGLE') ? Math.round(layer.cornerRadius) || 0 : 0,
 		opacity: getOpacity(layer),
-        rotation: getRotation(layer),
-		flip: (boolType) ? [100, 100] : getFlipMultiplier(layer),
+        rotation: rotation,
+		flip: flip,
         blendMode: getLayerBlending(layer.blendMode),
         booleanOperation: boolType || getBoolType(layer),
         isMask: layer.isMask,
@@ -268,7 +280,7 @@ function getText(layer, parentFrame) {
         lineHeight: lineHeight,
         inkTop: getInkOffset(layer),
         flip: flip,
-        rotation: getRotation(layer),
+        rotation: getRotation(layer, true),
         isMask: layer.isMask,
     };
     
@@ -390,10 +402,11 @@ function getGroup(layer, parentFrame, isMasked) {
 		frame: calcFrame,
         isVisible: (layer.visible !== false),
 		opacity: getOpacity(layer),
-		// rotation: getRotation(layer) * (flip[1]/100),
-		rotation: getRotation(layer),
+		// Figma groups have no space of their own: the children's transforms
+		// already include the group's rotation and flip
+		rotation: 0,
 		blendMode: getLayerBlending(layer.blendMode),
-        flip: getFlipMultiplier(layer),
+        flip: [100, 100],
         // hasClippingMask: false,
         shouldBreakMaskChain: false,
         // layers: [],
@@ -433,9 +446,10 @@ function getComponent(layer, parentFrame) {
         blendMode: getLayerBlending(layer.blendMode),
         symbolFrame: layer.masterComponent,
         bgColor: [1,1,1,1],
-        rotation: getRotation(layer),
+        rotation: getRotation(layer, true),
         flip: getFlipMultiplier(layer),
         isMask: layer.isMask,
+        clipsContent: layer.clipsContent === true,
         roundness: Math.round(layer.cornerRadius) || 0,
     };
     console.log('layer.name', layer);
@@ -569,9 +583,11 @@ function getBoolean(layer, parentFrame, boolType, isMultipath) {
         stroke: getStrokes(layer),
         isVisible: (layer.visible !== false),
 		opacity: getOpacity(layer),
-		rotation: getRotation(layer),
+		// a multi-path vector's subpaths are in its own space, so it keeps its
+		// transform; a boolean's operands already carry theirs
+		rotation: isMultipath ? getRotation(layer, true) : 0,
 		blendMode: getLayerBlending(layer.blendMode),
-        flip: [100,100],
+        flip: isMultipath ? getFlipMultiplier(layer) : [100,100],
         booleanOperation: boolType,
         isMask: layer.isMask,
         // hasClippingMask: false,
@@ -595,22 +611,15 @@ function getBoolean(layer, parentFrame, boolType, isMultipath) {
         // alert(frame.y + ' : ' + adjFrame.y)
         // layerData.layers = filterTypes(layer, { x: frame.x, y: frame.y - 40, width: frame.width, height: frame.height}, null);
         boolDepth++;        // operands of a boolean keep their geometry even when unpainted
-        layerData.layers = filterTypes(layer, adjFrame, null);
+        // operands are positioned in the boolean's own frame, like a group's children
+        layerData.layers = filterTypes(layer, getFrame(layer), null);
         boolDepth--;
 
-        // realign sub layers
-        layerData.layers.forEach(layer => {
-            boolOffset = (!boolOffset) ? { x: layerData.layers[0].frame.x, y: layerData.layers[0].frame.y } : boolOffset
-            if (!layer.layers) {    // lowest level nested shape
-                layer.frame.x -= layer.frame.width/2
-                layer.frame.y -= layer.frame.height/2
-            } else {    // calc offset
-                // offset = { x: 0, y: 0 }
-                // console.log('OFFSET apply', layer.name, boolOffset);
-                layer.frame.x -= boolOffset.x
-                layer.frame.y -= boolOffset.y
-            }
-            layer.booleanOperation = boolType
+        // host.ts wants each operand's top-left corner
+        layerData.layers.forEach(sub => {
+            sub.frame.x -= sub.frame.width/2
+            sub.frame.y -= sub.frame.height/2
+            sub.booleanOperation = boolType
         })
     }
 
@@ -772,6 +781,7 @@ function getBoolType (layer) {
     // console.log(layer.name, layer.booleanOperation)
 
     switch (boolType) {
+        case 'UNION':     // the Figma API's name for it
         case 'ADD':
             return 0;
         case 'SUBTRACT':
@@ -787,12 +797,7 @@ function getBoolType (layer) {
 }
 function getFrame(layer, parentFrame, constrainFrame) {
     var matrix = layer.relativeTransform;
-    var isRotated = matrix[0][0] != 1;
-    var isFlipped = (matrix[0][0] < 0 && matrix[1][1] > 0) || (matrix[0][0] > 0 && matrix[1][1] < 0);
-    var flippedHorizontal = matrix[0][0] < 0 && matrix[1][1] > 0;
-    var flippedVertical = matrix[0][0] > 0 && matrix[1][1] < 0;
-    
-    
+
     var offset = [0,0];
     if (parentFrame) {
         offset = [parentFrame.x - parentFrame.width/2, parentFrame.y - parentFrame.height/2];
@@ -801,18 +806,10 @@ function getFrame(layer, parentFrame, constrainFrame) {
 
     var width = layer.width || 0;
     var height = layer.height || 0;
-    // find the center of the shape
-    var hypot = Math.sqrt(width/2 * width/2 + height/2 * height/2);
-    var angle = layer.rotation * (Math.PI/180);
-
-    //   var vertOffset = 0;
-    // var horizOffset = 0;
-    if (flippedHorizontal) { 
-        offset[1] -= height;
-    }
-
-    var x = layer.x + Math.cos(Math.atan2(height, width) - angle) * hypot - offset[0];
-    var y = layer.y + Math.sin(Math.atan2(height, width) - angle) * hypot - offset[1];
+    // the center of the shape: the middle of its box run through its transform,
+    // which also holds for flipped layers
+    var x = matrix[0][2] + matrix[0][0] * width/2 + matrix[0][1] * height/2 - offset[0];
+    var y = matrix[1][2] + matrix[1][0] * width/2 + matrix[1][1] * height/2 - offset[1];
 
     if (layer.type == 'TEXT') {
         // y = (layer.y + 19.5) + Math.sin(Math.atan2(height, width) - angle) * hypot - offset[1];
@@ -1090,9 +1087,16 @@ function getShapeType(layer) {
 
     if ( layer.type == 'RECTANGLE' && 
         allEqual([layer.topLeftRadius, layer.topRightRadius, layer.bottomLeftRadius, layer.bottomRightRadius]) ) { return 'Rect' }
-    if ( layer.type == 'ELLIPSE' ) { return 'Ellipse' }
+    if ( layer.type == 'ELLIPSE' && !isArc(layer) ) { return 'Ellipse' }
     // if ( layer.type == 'STAR' || layer.type == 'POLYGON') { return 'Star' }
     return 'Path';
+}
+//// a pie, donut or open arc rather than a whole ellipse
+function isArc(layer) {
+    var arc = layer.arcData
+    if (!arc) { return false }
+    var sweep = Math.abs(arc.endingAngle - arc.startingAngle)
+    return arc.innerRadius > 0 || sweep < Math.PI * 2 - 0.0001
 }
 //// AE Fill Rule: 1 non-zero, 2 even-odd
 function getFillRule(layer) {
@@ -1306,12 +1310,16 @@ function getPath(layer, bounding, type) {
 
     // check if rectangle has uniform corner rounding
     const allEqual = arr => arr.every(v => v === arr[0])
-    if (layer.type == 'STAR' || layer.type == 'POLYGON' || (layer.type == 'RECTANGLE' && !allEqual([layer.topLeftRadius, layer.topRightRadius, layer.bottomLeftRadius, layer.bottomRightRadius])) ) {
+    if (layer.type == 'STAR' || layer.type == 'POLYGON' || (layer.type == 'ELLIPSE' && isArc(layer)) || (layer.type == 'RECTANGLE' && !allEqual([layer.topLeftRadius, layer.topRightRadius, layer.bottomLeftRadius, layer.bottomRightRadius])) ) {
         layer.vectorPaths = getGeometry(layer)
         layer.type = 'Path'
     }
 
     var pathStr, pathObj;
+    // one path string holding several subpaths (a donut, an icon with holes)
+    if (layer.vectorPaths && layer.vectorPaths.length == 1 && (layer.vectorPaths[0].data.match(/M/g) || []).length > 1) {
+        return 'multiPath'
+    }
     if (layer.vectorPaths && layer.vectorPaths.length == 1) {       // find an individual path
         pathStr = layer.vectorPaths || layer;
         pathObj = parseSvg(pathStr[0].data);
@@ -1421,6 +1429,7 @@ function getPath(layer, bounding, type) {
 
 function parseSvg(str, transformed) {
     // console.log(str)
+    var lastTerms;      // H/V used it undeclared, a ReferenceError in a strict module
     var pathObj = {
         points: [],
         inTangents: [],
@@ -1624,18 +1633,36 @@ function parseSvg(str, transformed) {
     return pathObj;
 }
 
-function getFlipMultiplier(layer) {
-    var matrix = layer.relativeTransform;
-    var x = (matrix[0][0] < 0) ? -100 : 100;     // horizontal flip
-    var y = (matrix[1][1] < 0) ? -100 : 100;     // vertical flip
-// console.log(layer.name, layer.relativeTransform);
-
-    // return [100, 100];
-    return [x, y];
+//// apply a transform's rotation/flip to a path around the layer's center
+// (tangents are relative to their vertex, so they only get the 2x2 part)
+function bakePathTransform(path, m, width, height) {
+    var cx = width / 2
+    var cy = height / 2
+    var point = p => [m[0][0] * (p[0] - cx) + m[0][1] * (p[1] - cy) + cx, m[1][0] * (p[0] - cx) + m[1][1] * (p[1] - cy) + cy]
+    var vector = p => [m[0][0] * p[0] + m[0][1] * p[1], m[1][0] * p[0] + m[1][1] * p[1]]
+    return {
+        points: path.points.map(point),
+        inTangents: (path.inTangents || []).map(vector),
+        outTangents: (path.outTangents || []).map(vector),
+        closed: path.closed,
+    }
 }
-function getRotation(layer) {
-    var matrix = layer.relativeTransform;
-    // var flip = (layer.type == 'group' && matrix[1][1] < 0) ? -1 : 1;
-    var flip = (matrix[0][0] < 0 || matrix[1][1] < 0) ? -1 : 1;
-    return -(Math.asin(matrix[0][1]) / (Math.PI / 180)).toFixed(3) * flip;
+//// rotation and flip from the transform matrix
+// A mirrored transform (negative determinant) becomes a horizontal flip plus
+// a rotation. Which rotation depends on where the host applies them: shapes
+// get the flip on the layer and the rotation on their group, while text,
+// compounds and precomps get both on the same layer (sameLayer).
+function isMirrored(matrix) {
+    return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0] < 0
+}
+function getFlipMultiplier(layer) {
+    return isMirrored(layer.relativeTransform) ? [-100, 100] : [100, 100];
+}
+function getRotation(layer, sameLayer) {
+    var m = layer.relativeTransform;
+    var rad = Math.atan2(m[1][0], m[0][0]);
+    if (isMirrored(m)) {
+        rad = sameLayer ? Math.atan2(-m[1][0], m[1][1]) : Math.atan2(m[1][0], m[1][1]);
+    }
+    return Math.round(rad * 180 / Math.PI * 1000) / 1000;
 }

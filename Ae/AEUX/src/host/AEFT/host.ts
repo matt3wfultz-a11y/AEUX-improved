@@ -534,8 +534,16 @@ function aeGroup(layer, opt_parent) {
     // } catch (error) {
         
     // }
+    // a guide layer can't carry opacity, effects, a blend mode or a matte for its
+    // children, so groups that need one become precomps even with the pref off
+    var maskKey = thisComp.id + '_' + (opt_parent ? opt_parent.name : 'comp');
+    var needsPrecomp = (layer.opacity != null && layer.opacity < 100) ||
+        layer.shadow || layer.innerShadow || layer.blur || layer.bgBlur ||
+        (layer.blendMode && layer.blendMode != 'BlendingMode.NORMAL') ||
+        (maskLayer[maskKey] && !layer.shouldBreakMaskChain);
+
     /// if auto-precomp is enabled
-    if (prefs.precompGroups || layer.type == 'Component') {
+    if (prefs.precompGroups || layer.type == 'Component' || needsPrecomp) {
         var frameRate = prefs.frameRate || 60;
         // skip if an empty group
         if (layer.layers.length < 1) { return; }
@@ -597,6 +605,15 @@ function aeGroup(layer, opt_parent) {
 
         // set transforms
         r.collapseTransformation = true;
+        // a collapsed precomp draws past its edges, so Figma's Clip content needs a mask
+        if (layer.clipsContent) {
+            var clip = r('ADBE Mask Parade').addProperty('ADBE Mask Atom');
+            var clipShape = new Shape();
+            clipShape.vertices = [[0, 0], [groupComp.width, 0], [groupComp.width, groupComp.height], [0, groupComp.height]];
+            clipShape.closed = true;
+            clip('ADBE Mask Shape').setValue(clipShape);
+            clip.name = 'Clip content';
+        }
         r('ADBE Transform Group')('ADBE Position').setValue( [layer.frame.x * compMult, layer.frame.y * compMult] );
 
         if (opt_parent) {
@@ -619,6 +636,7 @@ function aeGroup(layer, opt_parent) {
         addDropShadow(r, layer);
         addBlur(r, layer);
         addInnerShadow(r, layer);
+        if (layer.blendMode) { setLayerBlendMode(r, layer); }
 
     /// auto-precomp disabled - build layers in the main comp and parent to a controller layer
     } else {
@@ -1652,24 +1670,6 @@ function setMask(currentLayer, layerData) {
         // done because every layer above it gets a matte copied from it.
         if (hostApp == 'Figma') { figmaMaskSources.push(currentLayer); }
     }
-
-    // resize masked images from their default frame size
-    try { 
-        if (hostApp == 'Figma' && layerData.type == 'Image') {
-            // const maskPos = newMask('ADBE Transform Group')('ADBE Position').value
-            const maskRect = newMask.sourceRectAtTime(0, false)
-            const sourceRect = currentLayer.sourceRectAtTime(0, false)
-            const adjSize = [
-                Math.min(maskRect.width, thisComp.width - maskRect.left),
-                Math.min(maskRect.height, thisComp.height - maskRect.top)]
-            const adjScale = [
-                Math.max(adjSize[0] / sourceRect.width * 100, 0.00001),
-                Math.max(adjSize[1] / sourceRect.height * 100, 0.00001)]
-            const adjPos = [adjSize[0]/2, adjSize[1]/2]
-            currentLayer('ADBE Transform Group')('ADBE Scale').setValue(adjScale);
-            currentLayer('ADBE Transform Group')('ADBE Position').setValue(adjPos);
-        }
-    } catch (e) {}
 }
 
 //// set the colors of a gradient fill or stroke
@@ -1691,6 +1691,7 @@ function applyGradientColors(gradProp, gradient) {
     // at this same property, so it lands here however AE resolves it
     var layer = gradProp.propertyGroup(gradProp.propertyDepth);
     ae_deselectProps();
+    deselectLayers(layer.containingComp);
     gradProp.selected = true;
     layer.applyPreset(presetFile);
     ae_deselectProps();
@@ -1864,14 +1865,14 @@ function addBlur(r, layer, ignoreCompMult?) {
             if (layer.blur[i].type == 0) {
                 blur = r.property('Effects').addProperty('ADBE Gaussian Blur 2');
                 blur.property('ADBE Gaussian Blur 2-0001').setValue(layer.blur[i].radius * mult);
-                return;
+                continue;
             }
             /// Motion Blur
             if (layer.blur[i].type == 1) {
                 blur = r.property('Effects').addProperty('ADBE Motion Blur');
                 blur.property('ADBE Motion Blur-0001').setValue(layer.blur[i].direction);
                 blur.property('ADBE Motion Blur-0002').setValue(layer.blur[i].radius * mult);
-                return;
+                continue;
             }
             /// Radial Blur
             if (layer.blur[i].type == 2) {
@@ -1879,7 +1880,7 @@ function addBlur(r, layer, ignoreCompMult?) {
                 blur.property('ADBE Radial Blur-0001').setValue(layer.blur[i].direction);
                 blur.property('ADBE Radial Blur-0002').expression = 'transform.position';
                 blur.property('ADBE Radial Blur-0003').setValue(2);		// style: zoom
-                return;
+                continue;
             }
         }
     }
@@ -1955,6 +1956,7 @@ function createAndApplyShadowFfx(layer) {
         return false;
     }
 
+    deselectLayers(layer.containingComp);
     layer.selected = true;
     layer.applyPreset(shadowPresetFile);
     layer.selected = false;
@@ -2076,7 +2078,8 @@ function groupToPrecomp() {
                 /// get info about the group parent
                 var masterPos    = masterGroup('ADBE Transform Group')('ADBE Position').value;
                 var masterRot    = masterGroup('ADBE Transform Group')('ADBE Rotate Z').value;
-                var masterscale  = masterGroup('ADBE Transform Group')('ADBE Scale').value / 100;
+                var masterScaleVal = masterGroup('ADBE Transform Group')('ADBE Scale').value;
+                var masterscale  = [Math.abs(masterScaleVal[0]) / 100, Math.abs(masterScaleVal[1]) / 100];  // array / 100 is NaN
                 var masterLabel  = masterGroup.label;
                 var masterName   = masterGroup.name;
                 var masterParent = masterGroup.parent;
@@ -2100,11 +2103,11 @@ function groupToPrecomp() {
                     return; 				// quit
                 }
     
-                var isGroupLayer = (masterGroup.comment.includes(groupName)) ? true : false;		// check if it's a group layer from Sketch/Figma
+                var isGroupLayer = (masterGroup.comment.indexOf(groupName) != -1) ? true : false;		// check if it's a group layer from Sketch/Figma
                 // var isGroupLayer = (masterGroup.name.match('\u25BD')) ? true : false;		// check if it's a group layer from Sketch/Figma
                 if (isGroupLayer) {
                     var bounds = masterGroup.sourceRectAtTime(thisComp.time, false);
-                    var masterSize   = [Math.round(bounds.width * masterscale[0]), Math.round(bounds.height * masterscale[1])];
+                    var masterSize   = [Math.max(4, Math.round(bounds.width * masterscale[0])), Math.max(4, Math.round(bounds.height * masterscale[1]))];
                 } else {
                     var masterSize = [thisComp.width, thisComp.height];
                 }
@@ -2184,7 +2187,7 @@ function precompToLayers() {
     /// loop through all selected layer
     for (var i = 0; i < precompMasters.length; i++) {
         precompMaster = precompMasters[i];
-        var isGroupLayer = (precompMaster.comment.includes(groupName)) ? true : false;		// check if it's a group layer from Sketch/Figma
+        var isGroupLayer = (precompMaster.comment.indexOf(groupName) != -1) ? true : false;		// check if it's a group layer from Sketch/Figma
         // var isGroupLayer = (precompMaster.name.match('\u25BD')) ? true : false;		// check if it's a group layer from Sketch/Figma
 
         inPoint = precompMasters[i].inPoint;
@@ -2337,7 +2340,8 @@ function deleteGroupLayers() {
     for (var i = thisComp.layers.length; i > 0; i--) {
         var layer = thisComp.layer(i);
         // if the layer name starts with ▽
-        if (layer.comment.includes(groupName)) {
+        // only the guide layers; precomps made by groupToPrecomp carry the tag too
+        if (layer.guideLayer && String(layer.comment) == groupName) {
         // if (layer.name.charAt(0) == '\u25BD' && layer.guideLayer) {
             layer.remove();
         }
@@ -2355,6 +2359,14 @@ function ae_deselectProps() {
     // deselecting a group can take its children with it, so work through a
     // snapshot instead of re-reading index 0 a fixed number of times
     var selected = thisComp.selectedProperties;
+    for (var i = selected.length - 1; i >= 0; i--) {
+        try { selected[i].selected = false; } catch (e) {}
+    }
+}
+
+//// applyPreset goes to every selected layer, not just the one it's called on
+function deselectLayers(comp) {
+    var selected = comp.selectedLayers;
     for (var i = selected.length - 1; i >= 0; i--) {
         try { selected[i].selected = false; } catch (e) {}
     }

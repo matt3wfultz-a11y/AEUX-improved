@@ -400,7 +400,12 @@ var AEUX = (function () {
         }
     }
     function aeGroup(layer, opt_parent) {
-        if (prefs.precompGroups || layer.type == 'Component') {
+        var maskKey = thisComp.id + '_' + (opt_parent ? opt_parent.name : 'comp');
+        var needsPrecomp = (layer.opacity != null && layer.opacity < 100) ||
+            layer.shadow || layer.innerShadow || layer.blur || layer.bgBlur ||
+            (layer.blendMode && layer.blendMode != 'BlendingMode.NORMAL') ||
+            (maskLayer[maskKey] && !layer.shouldBreakMaskChain);
+        if (prefs.precompGroups || layer.type == 'Component' || needsPrecomp) {
             var frameRate = prefs.frameRate || 60;
             if (layer.layers.length < 1) {
                 return;
@@ -419,6 +424,14 @@ var AEUX = (function () {
             filterTypes(layer.layers, null);
             thisComp = mainComp;
             r.collapseTransformation = true;
+            if (layer.clipsContent) {
+                var clip = r('ADBE Mask Parade').addProperty('ADBE Mask Atom');
+                var clipShape = new Shape();
+                clipShape.vertices = [[0, 0], [groupComp.width, 0], [groupComp.width, groupComp.height], [0, groupComp.height]];
+                clipShape.closed = true;
+                clip('ADBE Mask Shape').setValue(clipShape);
+                clip.name = 'Clip content';
+            }
             r('ADBE Transform Group')('ADBE Position').setValue([layer.frame.x * compMult, layer.frame.y * compMult]);
             if (opt_parent) {
                 r.setParentWithJump(opt_parent);
@@ -436,6 +449,9 @@ var AEUX = (function () {
             addDropShadow(r, layer);
             addBlur(r, layer);
             addInnerShadow(r, layer);
+            if (layer.blendMode) {
+                setLayerBlendMode(r, layer);
+            }
         }
         else {
             if (layer.layers.length < 1) {
@@ -1123,24 +1139,6 @@ var AEUX = (function () {
                 figmaMaskSources.push(currentLayer);
             }
         }
-        try {
-            if (hostApp == 'Figma' && layerData.type == 'Image') {
-                var maskRect = newMask.sourceRectAtTime(0, false);
-                var sourceRect = currentLayer.sourceRectAtTime(0, false);
-                var adjSize = [
-                    Math.min(maskRect.width, thisComp.width - maskRect.left),
-                    Math.min(maskRect.height, thisComp.height - maskRect.top)
-                ];
-                var adjScale = [
-                    Math.max(adjSize[0] / sourceRect.width * 100, 0.00001),
-                    Math.max(adjSize[1] / sourceRect.height * 100, 0.00001)
-                ];
-                var adjPos = [adjSize[0] / 2, adjSize[1] / 2];
-                currentLayer('ADBE Transform Group')('ADBE Scale').setValue(adjScale);
-                currentLayer('ADBE Transform Group')('ADBE Position').setValue(adjPos);
-            }
-        }
-        catch (e) { }
     }
     function applyGradientColors(gradProp, gradient) {
         var stops = gradientStops(gradient);
@@ -1154,6 +1152,7 @@ var AEUX = (function () {
         }
         var layer = gradProp.propertyGroup(gradProp.propertyDepth);
         ae_deselectProps();
+        deselectLayers(layer.containingComp);
         gradProp.selected = true;
         layer.applyPreset(presetFile);
         ae_deselectProps();
@@ -1293,20 +1292,20 @@ var AEUX = (function () {
                 if (layer.blur[i].type == 0) {
                     blur = r.property('Effects').addProperty('ADBE Gaussian Blur 2');
                     blur.property('ADBE Gaussian Blur 2-0001').setValue(layer.blur[i].radius * mult);
-                    return;
+                    continue;
                 }
                 if (layer.blur[i].type == 1) {
                     blur = r.property('Effects').addProperty('ADBE Motion Blur');
                     blur.property('ADBE Motion Blur-0001').setValue(layer.blur[i].direction);
                     blur.property('ADBE Motion Blur-0002').setValue(layer.blur[i].radius * mult);
-                    return;
+                    continue;
                 }
                 if (layer.blur[i].type == 2) {
                     blur = r.property('Effects').addProperty('ADBE Radial Blur');
                     blur.property('ADBE Radial Blur-0001').setValue(layer.blur[i].direction);
                     blur.property('ADBE Radial Blur-0002').expression = 'transform.position';
                     blur.property('ADBE Radial Blur-0003').setValue(2);
-                    return;
+                    continue;
                 }
             }
         }
@@ -1375,6 +1374,7 @@ var AEUX = (function () {
             returnMessage.push(5);
             return false;
         }
+        deselectLayers(layer.containingComp);
         layer.selected = true;
         layer.applyPreset(shadowPresetFile);
         layer.selected = false;
@@ -1466,7 +1466,8 @@ var AEUX = (function () {
             try {
                 var masterPos = masterGroup('ADBE Transform Group')('ADBE Position').value;
                 var masterRot = masterGroup('ADBE Transform Group')('ADBE Rotate Z').value;
-                var masterscale = masterGroup('ADBE Transform Group')('ADBE Scale').value / 100;
+                var masterScaleVal = masterGroup('ADBE Transform Group')('ADBE Scale').value;
+                var masterscale = [Math.abs(masterScaleVal[0]) / 100, Math.abs(masterScaleVal[1]) / 100];
                 var masterLabel = masterGroup.label;
                 var masterName = masterGroup.name;
                 var masterParent = masterGroup.parent;
@@ -1484,10 +1485,10 @@ var AEUX = (function () {
                     }
                     return;
                 }
-                var isGroupLayer = (masterGroup.comment.includes(groupName)) ? true : false;
+                var isGroupLayer = (masterGroup.comment.indexOf(groupName) != -1) ? true : false;
                 if (isGroupLayer) {
                     var bounds = masterGroup.sourceRectAtTime(thisComp.time, false);
-                    var masterSize = [Math.round(bounds.width * masterscale[0]), Math.round(bounds.height * masterscale[1])];
+                    var masterSize = [Math.max(4, Math.round(bounds.width * masterscale[0])), Math.max(4, Math.round(bounds.height * masterscale[1]))];
                 }
                 else {
                     var masterSize = [thisComp.width, thisComp.height];
@@ -1547,7 +1548,7 @@ var AEUX = (function () {
         app.beginUndoGroup('Group to precomp');
         for (var i = 0; i < precompMasters.length; i++) {
             precompMaster = precompMasters[i];
-            var isGroupLayer = (precompMaster.comment.includes(groupName)) ? true : false;
+            var isGroupLayer = (precompMaster.comment.indexOf(groupName) != -1) ? true : false;
             inPoint = precompMasters[i].inPoint;
             outPoint = precompMasters[i].outPoint;
             label = precompMasters[i].label;
@@ -1654,7 +1655,7 @@ var AEUX = (function () {
         ;
         for (var i = thisComp.layers.length; i > 0; i--) {
             var layer = thisComp.layer(i);
-            if (layer.comment.includes(groupName)) {
+            if (layer.guideLayer && String(layer.comment) == groupName) {
                 layer.remove();
             }
         }
@@ -1662,6 +1663,15 @@ var AEUX = (function () {
     }
     function ae_deselectProps() {
         var selected = thisComp.selectedProperties;
+        for (var i = selected.length - 1; i >= 0; i--) {
+            try {
+                selected[i].selected = false;
+            }
+            catch (e) { }
+        }
+    }
+    function deselectLayers(comp) {
+        var selected = comp.selectedLayers;
         for (var i = selected.length - 1; i >= 0; i--) {
             try {
                 selected[i].selected = false;
