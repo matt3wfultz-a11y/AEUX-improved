@@ -1,5 +1,4 @@
 /*jshint esversion: 6, asi: true*/
-import { extractLinearGradientParamsFromTransform, extractRadialOrDiamondGradientParams } from "@figma-plugin/helpers";
 import * as triclops from './triclops.js'
 
 var versionNumber = 0.81;
@@ -891,30 +890,8 @@ function getFills(layer, parentFrame) {
             var fillType = getFillType(fill.type);   /// find type and if a gradient get the grad type
             // fill is a gradient
             if (fillType[0] > 0) {
-                var gradType = fillType[1];
-                
-                let points = {}
-                if (gradType == 2) {
-                    let radialPoints = extractRadialOrDiamondGradientParams(layer.width, layer.height, fill.gradientTransform)
-                    let rad = radialPoints.radius[0]
-                    points.start = radialPoints.center
-                    points.end = [points.start[0] + rad, points.start[1]]
-                } else {
-                    points = extractLinearGradientParamsFromTransform(layer.width, layer.height, fill.gradientTransform)
-                }                    
-                
-                fillObj = {
-                    type: 'gradient',
-                    // startPoint: [points.start[0], points.start[1] ],
-                    // endPoint: [points.end[0], points.end[1] ],
-                    startPoint: [points.start[0] - layer.width / 2, points.start[1] - layer.height / 2 ],
-                    endPoint: [points.end[0] - layer.width / 2, points.end[1] - layer.height / 2 ],
-                    gradType:  gradType,
-                    gradient: getGradient(fill.gradientStops),
-                    opacity: 100,
-                    blendMode: getShapeBlending( fill.blendMode ),
-                }
-                
+                fillObj = getGradientPaint(fill, layer, fillType[1])
+
             // fill is an image or texture
             } else if (fill.type == 'IMAGE' && !layer.isMask) {
                 fillData = getImageFill(layer, parentFrame);
@@ -997,31 +974,11 @@ function getStrokes(layer) {
                 var fillType = getFillType(stroke.type);   /// find type and if a gradient get the grad type
                 // stroke is a gradient
                 if (fillType[0] > 0) {
-                    var gradType = fillType[1];
-
-                    let points = {}
-                    if (gradType == 2) {
-                        let radialPoints = extractRadialOrDiamondGradientParams(layer.width, layer.height, stroke.gradientTransform)
-                        let rad = radialPoints.radius[0]
-                        points.start = radialPoints.center
-                        points.end = [points.start[0] + rad, points.start[1]]
-                    } else {
-                        points = extractLinearGradientParamsFromTransform(layer.width, layer.height, stroke.gradientTransform)
-                    }  
-
-                    strokeObj = {
-                        type: 'gradient',
-                        startPoint: [points.start[0] - layer.width / 2, points.start[1] - layer.height / 2],
-                        endPoint: [points.end[0] - layer.width / 2, points.end[1] - layer.height / 2],
-                        gradType:  gradType,
-                        gradient: getGradient(stroke.gradientStops),
-        				opacity: 100,
-        				width: getStrokeWeight(layer),
-        				cap: getCap(layer),
-        				join: getJoin(layer),
-                        strokeDashes: layer.dashPattern || [],
-                        blendMode: getShapeBlending( stroke.blendMode ),
-        			}
+                    strokeObj = getGradientPaint(stroke, layer, fillType[1])
+                    strokeObj.width = getStrokeWeight(layer)
+                    strokeObj.cap = getCap(layer)
+                    strokeObj.join = getJoin(layer)
+                    strokeObj.strokeDashes = layer.dashPattern || []
                 // stroke is a solid
                 } else {                    
                     var color = colorObjToArray(stroke);
@@ -1060,6 +1017,43 @@ function getStrokes(layer) {
             return 2;
         }
         return 0;
+    }
+}
+//// get layer data: GRADIENT fill or stroke
+function getGradientPaint(paint, layer, gradType) {
+    var points = getGradientPoints(paint.gradientTransform, layer.width, layer.height, gradType)
+
+    return {
+        type: 'gradient',
+        startPoint: points.start,
+        endPoint: points.end,
+        gradType: gradType,
+        gradient: getGradient(paint.gradientStops),
+        opacity: ((paint.opacity !== undefined) ? paint.opacity : 1) * 100,
+        blendMode: getShapeBlending( paint.blendMode ),
+    }
+}
+//// gradient start and end points, centered on the layer like the AE shape group
+// gradientTransform maps the layer's unit box into gradient space, where a
+// linear gradient runs from (0, .5) to (1, .5) and a radial one is centered on
+// (.5, .5) with its handle at (1, .5). Inverting it gives those points on the
+// layer. AE radials are circular, so an elliptical one keeps the radius along
+// that first handle.
+function getGradientPoints(t, width, height, gradType) {
+    var det = t[0][0] * t[1][1] - t[0][1] * t[1][0]
+
+    if (gradType == 2) {
+        return { start: toLayer(0.5, 0.5), end: toLayer(1, 0.5) }
+    }
+    return { start: toLayer(0, 0.5), end: toLayer(1, 0.5) }
+
+    function toLayer(x, y) {
+        var dx = x - t[0][2]
+        var dy = y - t[1][2]
+        return [
+            ( t[1][1] * dx - t[0][1] * dy) / det * width - width / 2,
+            (-t[1][0] * dx + t[0][0] * dy) / det * height - height / 2,
+        ]
     }
 }
 //// get layer data: GRADIENT
@@ -1101,10 +1095,10 @@ function getFillType(type) {
         typeList.push(1);       // it's a gradient
         if (type == 'GRADIENT_LINEAR') {
             typeList.push(1);   // it's a linear gradient
-        } else if (type == 'GRADIENT_RADIAL') {
-            typeList.push(2);   // it's a radial gradient
+        } else if (type == 'GRADIENT_RADIAL' || type == 'GRADIENT_DIAMOND') {
+            typeList.push(2);   // it's a radial gradient, the closest AE has to a diamond
         } else {
-            typeList.push(1);   // it's a linear or anything else
+            typeList.push(1);   // it's angular, which AE can't do
         }
     } else {
         typeList.push(0);       // it's a solid

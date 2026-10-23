@@ -1485,47 +1485,26 @@ function addFill(r, layer) {
     if (layer.fill != null) {
         // loop through multiple fill objects
         for (var i = layer.fill.length-1; i >= 0; i--) {
-            // reset variables
-            var aeBlendMode = 1;
+            var fillData = layer.fill[i];
             var fill;
 
-            if (layer.fill[i].type == 'fill') {
+            if (fillData.type == 'fill') {
                 // add a fill element
                 fill = r(2)(1)(2).addProperty('ADBE Vector Graphic - Fill');
-                // set color and visibility
-                fill.enabled = layer.fill[i].enabled;
-                fill("ADBE Vector Fill Color").setValue(layer.fill[i].color);
-                fill("ADBE Vector Fill Opacity").setValue(layer.fill[i].opacity);
-            }
-            if (layer.fill[i].type == 'gradient') {
-                // var gradType;
-                // // linear
-                // if (layer.fill[i].gradType == 0) {
-                //     gradType = 1;
-                // // radial
-                // } else if (layer.fill[i].gradType == 1) {
-                //     gradType = 2;
-                // // linear as default
-                // } else {
-                //     gradType = 1;
-                //     returnMessage.push(2);		// 'Angular gradients'
-                // }
+                fill("ADBE Vector Fill Color").setValue(fillData.color);
+                fill("ADBE Vector Fill Opacity").setValue(fillData.opacity);
+            } else if (fillData.type == 'gradient') {
                 // add a gradient element
                 fill = r(2)(1)(2).addProperty('ADBE Vector Graphic - G-Fill');
-                // set color and visibility
-                fill("ADBE Vector Fill Opacity").setValue(layer.fill[i].opacity);
-                fill('ADBE Vector Grad Type').setValue(layer.fill[i].gradType);
-                fill('ADBE Vector Grad Start Pt').setValue(layer.fill[i].startPoint);
-                fill('ADBE Vector Grad End Pt').setValue(layer.fill[i].endPoint);
-
-                /// deselect layers before applying gradient preset
-                ae_deselectProps();
-                fill.selected = true;
-                applyGradientFfx('fill', false, layer.fill[i]);
+                fill("ADBE Vector Fill Opacity").setValue(fillData.opacity);
+                setGradientProps(fill, fillData);
+            } else {
+                continue;
             }
-            // set blend mode
-            fill("ADBE Vector Blend Mode").setValue(layer.fill[i].blendMode);
+            fill.enabled = (fillData.enabled !== false);
+            if (fillData.blendMode) { fill("ADBE Vector Blend Mode").setValue(fillData.blendMode); }
 
+            if (fillData.type == 'gradient') { applyGradientColors(fill, fillData.gradient); }
         }
     }
 }
@@ -1536,43 +1515,35 @@ function addStroke(r, layer) {
     if (layer.stroke != null) {
         // loop through multiple stroke objects
         for (var i = layer.stroke.length-1; i >= 0; i--) {
+            var stroke;
 
             if (layer.stroke[i].type == 'fill') {
                 // add a fill element
                 stroke = r(2)(1)(2).addProperty("ADBE Vector Graphic - Stroke");
-                // set color and visibility
-                stroke.enabled = layer.stroke[i].enabled;
                 stroke("ADBE Vector Stroke Color").setValue(layer.stroke[i].color);
-
                 // set generic stroke props
                 setStrokeProps(stroke, i);
-            }
-
-            if (layer.stroke[i].type == 'gradient') {
+            } else if (layer.stroke[i].type == 'gradient') {
                 stroke = r(2)(1)(2).addProperty('ADBE Vector Graphic - G-Stroke');
                 // set generic stroke props
                 setStrokeProps(stroke, i);
-                // set gradient props
-                stroke('ADBE Vector Grad Type').setValue(layer.stroke[i].gradType);
-                stroke('ADBE Vector Grad Start Pt').setValue(layer.stroke[i].startPoint);
-                stroke('ADBE Vector Grad End Pt').setValue(layer.stroke[i].endPoint);
-
-                /// deselect layers before applying gradient preset
-                ae_deselectProps();
-                stroke.selected = true;
-                applyGradientFfx('stroke', false, layer.stroke[i]);
+                setGradientProps(stroke, layer.stroke[i]);
+            } else {
+                continue;
             }
-            // set blend mode
-            stroke("ADBE Vector Blend Mode").setValue(layer.stroke[i].blendMode);
+            stroke.enabled = (layer.stroke[i].enabled !== false);
+            if (layer.stroke[i].blendMode) { stroke("ADBE Vector Blend Mode").setValue(layer.stroke[i].blendMode); }
 
             // apply dashes
             if (layer.stroke[i].strokeDashes && layer.stroke[i].strokeDashes.length > 0) {
                 var strokeDashes = layer.stroke[i].strokeDashes;
+                // AE has room for 3 dashes and 3 gaps
+                var dashCount = Math.min(strokeDashes.length, 6);
 
-                for (var j = 1; j <= strokeDashes.length; j++) {
-                    countRound = Math.round(j/2);
+                for (var j = 1; j <= dashCount; j++) {
+                    var countRound = Math.round(j/2);
 
-                    if (j-1 % 2 == 0) {
+                    if ((j - 1) % 2 == 0) {
                         stroke('ADBE Vector Stroke Dashes').addProperty('ADBE Vector Stroke Dash ' + (countRound));
                         stroke('ADBE Vector Stroke Dashes')('ADBE Vector Stroke Dash ' + (countRound)).setValue(strokeDashes[j-1]);
                     } else {
@@ -1581,6 +1552,8 @@ function addStroke(r, layer) {
                     }
                 }
             }
+
+            if (layer.stroke[i].type == 'gradient') { applyGradientColors(stroke, layer.stroke[i].gradient); }
         }
     }
 
@@ -1592,6 +1565,20 @@ function addStroke(r, layer) {
         stroke("ADBE Vector Stroke Width").setValue(width);
         stroke("ADBE Vector Stroke Line Cap").setValue(layer.stroke[i].cap + 1);
         stroke("ADBE Vector Stroke Line Join").setValue(layer.stroke[i].join + 1 );
+    }
+}
+
+//// gradient type and start/end points
+function setGradientProps(gradProp, data) {
+    gradProp('ADBE Vector Grad Type').setValue(data.gradType == 2 ? 2 : 1);   // 1 linear, 2 radial
+    // NaN points (a degenerate gradient transform) would throw and skip the layer
+    if (isPoint(data.startPoint) && isPoint(data.endPoint)) {
+        gradProp('ADBE Vector Grad Start Pt').setValue(data.startPoint);
+        gradProp('ADBE Vector Grad End Pt').setValue(data.endPoint);
+    }
+
+    function isPoint(p) {
+        return p && typeof p[0] == 'number' && typeof p[1] == 'number' && isFinite(p[0]) && isFinite(p[1]);
     }
 }
 
@@ -1658,65 +1645,143 @@ function setMask(currentLayer, layerData) {
     } catch (e) {}
 }
 
-//// create gradient ffx and apply it to layer
-function applyGradientFfx(type, dontTwirl, element) {
-    /// file binary string
-    var presetFiles = {
-        template_grad2:"RIFX\x00\x00\n`FaFXhead\x00\x00\x00\x10\x00\x00\x00\x03\x00\x00\x00W\x00\x00\x00\x01\x00\x00\x00\x00LIST\x00\x00\n<bescbeso\x00\x00\x008\x00\x00\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00`\x00\x00\x18\x00\x00\x00\x00\x00\x04\x00\x01\x00\x01\x07\u0080\x048?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\u00FF\u00FF\u00FF\u00FFLIST\x00\x00\x01\u0084tdsptdot\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdpl\x00\x00\x00\x04\x00\x00\x00\x05LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Root Vectors Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\x00\x00\x00\x00tdmn\x00\x00\x00(ADBE Vector Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Vectors Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\x00\x00\x00\x02tdmn\x00\x00\x00(ADBE Vector Graphic - G-Fill\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Vector Grad Colors\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00tdsn\x00\x00\x00\x07Colors\x00\x00LIST\x00\x00\x00dtdsptdot\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdpl\x00\x00\x00\x04\x00\x00\x00\x01LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE End of path sentinel\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x07\u00E8GCstLIST\x00\x00\x00\u00B0tdbstdsb\x00\x00\x00\x04\x00\x00\x00\x01tdsn\x00\x00\x00\x07Colors\x00\x00tdb4\x00\x00\x00|\u00DB\u0099\x00\x01\x00\x07\x00\x00\u00FF\u00FF\u00FF\u00FF\x00\x00`\x00?\x1A6\u00E2\u00EB\x1CC-?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00\x00\x01\x00\b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00cdat\x00\x00\x00\x04\x00\x00\x00\x00LIST\x00\x00\x07$GCkyUtf8\x00\x00\x07\x18<?xml version='1.0'?>\n<prop.map version='4'>\n<prop.list>\n<prop.pair>\n<key>Gradient Color Data</key>\n<prop.list>\n<prop.pair>\n<key>Alpha Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n<prop.pair>\n<key>Stop-0</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[0].rampPoint\npoints[0].midPoint\npoints[0].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-1</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[1].rampPoint\npoints[1].midPoint\npoints[1].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stops Size</key>\n<int type='unsigned' size='32'>2</int>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Color Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n<prop.pair>\n<key>Stop-0</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[0].rampPoint\npoints[0].midPoint\npoints[0].color[0]\npoints[0].color[1]\npoints[0].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-1</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[1].rampPoint\npoints[1].midPoint\npoints[1].color[0]\npoints[1].color[1]\npoints[1].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stops Size</key>\n<int type='unsigned' size='32'>2</int>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Gradient Colors</key>\n<string>1.0</string>\n</prop.pair>\n</prop.list>\n</prop.map>\n<?xpacket begin=\"\u00EF\u00BB\u00BF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"Adobe XMP Core 5.6-c014 79.156821, 2014/08/29-03:07:50        \">\n   <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n      <rdf:Description rdf:about=\"\"\n            xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n            xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"\n            xmlns:xmpMM=\"http://ns.adobe.com/xap/1.0/mm/\"\n            xmlns:stEvt=\"http://ns.adobe.com/xap/1.0/sType/ResourceEvent#\">\n         <dc:format>application/vnd.adobe.aftereffects.preset-animation</dc:format>\n         <xmp:CreatorTool>Adobe After Effects CC 2014 (Macintosh)</xmp:CreatorTool>\n         <xmp:CreateDate>2018-01-20T12:34:50-05:00</xmp:CreateDate>\n         <xmp:MetadataDate>2018-01-20T12:34:50-05:00</xmp:MetadataDate>\n         <xmp:ModifyDate>2018-01-20T12:34:50-05:00</xmp:ModifyDate>\n         <xmpMM:InstanceID>xmp.iid:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:InstanceID>\n         <xmpMM:DocumentID>xmp.did:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:DocumentID>\n         <xmpMM:OriginalDocumentID>xmp.did:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:OriginalDocumentID>\n         <xmpMM:History>\n            <rdf:Seq>\n               <rdf:li rdf:parseType=\"Resource\">\n                  <stEvt:action>created</stEvt:action>\n                  <stEvt:instanceID>xmp.iid:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</stEvt:instanceID>\n                  <stEvt:when>2018-01-20T12:34:50-05:00</stEvt:when>\n                  <stEvt:softwareAgent>Adobe After Effects CC 2014 (Macintosh)</stEvt:softwareAgent>\n               </rdf:li>\n            </rdf:Seq>\n         </xmpMM:History>\n      </rdf:Description>\n   </rdf:RDF>\n</x:xmpmeta>\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n<?xpacket end=\"w\"?>\n",
-        template_grad3:"RIFX\x00\x00\f\u0090FaFXhead\x00\x00\x00\x10\x00\x00\x00\x03\x00\x00\x00W\x00\x00\x00\x01\x00`\x00\x00LIST\x00\x00\flbescbeso\x00\x00\x008\x00\x00\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00`\x00\x00\x18\x00\x00\x00\x00\x00\x04\x00\x01\x00\x01\x07\u0080\x048?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\u00FF\u00FF\u00FF\u00FFLIST\x00\x00\x01\u0084tdsptdot\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdpl\x00\x00\x00\x04\x00\x00\x00\x05LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Root Vectors Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\x00\x00\x00\x00tdmn\x00\x00\x00(ADBE Vector Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Vectors Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\x00\x00\x00\x02tdmn\x00\x00\x00(ADBE Vector Graphic - G-Fill\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Vector Grad Colors\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00tdsn\x00\x00\x00\x07Colors\x00\x00LIST\x00\x00\x00dtdsptdot\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdpl\x00\x00\x00\x04\x00\x00\x00\x01LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE End of path sentinel\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\n\x18GCstLIST\x00\x00\x00\u00B0tdbstdsb\x00\x00\x00\x04\x00\x00\x00\x01tdsn\x00\x00\x00\x07Colors\x00\x00tdb4\x00\x00\x00|\u00DB\u0099\x00\x01\x00\x07\x00\x00\u00FF\u00FF\u00FF\u00FF\x00\x00`\x00?\x1A6\u00E2\u00EB\x1CC-?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00\x00\x01\x00\b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00cdat\x00\x00\x00\x04\x00\x00\x00\x00LIST\x00\x00\tTGCkyUtf8\x00\x00\tG<?xml version='1.0'?>\n<prop.map version='4'>\n<prop.list>\n<prop.pair>\n<key>Gradient Color Data</key>\n<prop.list>\n<prop.pair>\n<key>Alpha Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n<prop.pair>\n<key>Stop-0</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[0].rampPoint\npoints[0].midPoint\npoints[0].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-1</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[1].rampPoint\npoints[1].midPoint\npoints[1].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-2</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[2].rampPoint\npoints[2].midPoint\npoints[2].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stops Size</key>\n<int type='unsigned' size='32'>3</int>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Color Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n<prop.pair>\n<key>Stop-0</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[0].rampPoint\npoints[0].midPoint\npoints[0].color[0]\npoints[0].color[1]\npoints[0].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-1</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[1].rampPoint\npoints[1].midPoint\npoints[1].color[0]\npoints[1].color[1]\npoints[1].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-2</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[2].rampPoint\npoints[2].midPoint\npoints[2].color[0]\npoints[2].color[1]\npoints[2].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stops Size</key>\n<int type='unsigned' size='32'>3</int>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Gradient Colors</key>\n<string>1.0</string>\n</prop.pair>\n</prop.list>\n</prop.map>\n\x00<?xpacket begin=\"\u00EF\u00BB\u00BF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"Adobe XMP Core 5.6-c014 79.156821, 2014/08/29-03:07:50        \">\n   <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n      <rdf:Description rdf:about=\"\"\n            xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n            xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"\n            xmlns:xmpMM=\"http://ns.adobe.com/xap/1.0/mm/\"\n            xmlns:stEvt=\"http://ns.adobe.com/xap/1.0/sType/ResourceEvent#\">\n         <dc:format>application/vnd.adobe.aftereffects.preset-animation</dc:format>\n         <xmp:CreatorTool>Adobe After Effects CC 2014 (Macintosh)</xmp:CreatorTool>\n         <xmp:CreateDate>2018-01-20T12:34:50-05:00</xmp:CreateDate>\n         <xmp:MetadataDate>2018-01-20T12:34:50-05:00</xmp:MetadataDate>\n         <xmp:ModifyDate>2018-01-20T12:34:50-05:00</xmp:ModifyDate>\n         <xmpMM:InstanceID>xmp.iid:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:InstanceID>\n         <xmpMM:DocumentID>xmp.did:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:DocumentID>\n         <xmpMM:OriginalDocumentID>xmp.did:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:OriginalDocumentID>\n         <xmpMM:History>\n            <rdf:Seq>\n               <rdf:li rdf:parseType=\"Resource\">\n                  <stEvt:action>created</stEvt:action>\n                  <stEvt:instanceID>xmp.iid:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</stEvt:instanceID>\n                  <stEvt:when>2018-01-20T12:34:50-05:00</stEvt:when>\n                  <stEvt:softwareAgent>Adobe After Effects CC 2014 (Macintosh)</stEvt:softwareAgent>\n               </rdf:li>\n            </rdf:Seq>\n         </xmpMM:History>\n      </rdf:Description>\n   </rdf:RDF>\n</x:xmpmeta>\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n<?xpacket end=\"w\"?>\n",
-        template_grad4:"RIFX\x00\x00\x0E\u00BEFaFXhead\x00\x00\x00\x10\x00\x00\x00\x03\x00\x00\x00W\x00\x00\x00\x01\x00`\x00\x00LIST\x00\x00\x0E\u009Abescbeso\x00\x00\x008\x00\x00\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00`\x00\x00\x18\x00\x00\x00\x00\x00\x04\x00\x01\x00\x01\x07\u0080\x048?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\u00FF\u00FF\u00FF\u00FFLIST\x00\x00\x01\u0084tdsptdot\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdpl\x00\x00\x00\x04\x00\x00\x00\x05LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Root Vectors Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\x00\x00\x00\x00tdmn\x00\x00\x00(ADBE Vector Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Vectors Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\x00\x00\x00\x02tdmn\x00\x00\x00(ADBE Vector Graphic - G-Fill\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Vector Grad Colors\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00tdsn\x00\x00\x00\x07Colors\x00\x00LIST\x00\x00\x00dtdsptdot\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdpl\x00\x00\x00\x04\x00\x00\x00\x01LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE End of path sentinel\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\fFGCstLIST\x00\x00\x00\u00B0tdbstdsb\x00\x00\x00\x04\x00\x00\x00\x01tdsn\x00\x00\x00\x07Colors\x00\x00tdb4\x00\x00\x00|\u00DB\u0099\x00\x01\x00\x07\x00\x00\u00FF\u00FF\u00FF\u00FF\x00\x00`\x00?\x1A6\u00E2\u00EB\x1CC-?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00\x00\x01\x00\b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00cdat\x00\x00\x00\x04\x00\x00\x00\x00LIST\x00\x00\x0B\u0082GCkyUtf8\x00\x00\x0Bv<?xml version='1.0'?>\n<prop.map version='4'>\n<prop.list>\n<prop.pair>\n<key>Gradient Color Data</key>\n<prop.list>\n<prop.pair>\n<key>Alpha Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n<prop.pair>\n<key>Stop-0</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[0].rampPoint\npoints[0].midPoint\npoints[0].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-1</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[1].rampPoint\npoints[1].midPoint\npoints[1].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-2</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[2].rampPoint\npoints[2].midPoint\npoints[2].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-3</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[3].rampPoint\npoints[3].midPoint\npoints[3].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stops Size</key>\n<int type='unsigned' size='32'>4</int>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Color Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n<prop.pair>\n<key>Stop-0</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[0].rampPoint\npoints[0].midPoint\npoints[0].color[0]\npoints[0].color[1]\npoints[0].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-1</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[1].rampPoint\npoints[1].midPoint\npoints[1].color[0]\npoints[1].color[1]\npoints[1].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-2</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[2].rampPoint\npoints[2].midPoint\npoints[2].color[0]\npoints[2].color[1]\npoints[2].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-3</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[3].rampPoint\npoints[3].midPoint\npoints[3].color[0]\npoints[3].color[1]\npoints[3].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stops Size</key>\n<int type='unsigned' size='32'>4</int>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Gradient Colors</key>\n<string>1.0</string>\n</prop.pair>\n</prop.list>\n</prop.map>\n<?xpacket begin=\"\u00EF\u00BB\u00BF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"Adobe XMP Core 5.6-c014 79.156821, 2014/08/29-03:07:50        \">\n   <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n      <rdf:Description rdf:about=\"\"\n            xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n            xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"\n            xmlns:xmpMM=\"http://ns.adobe.com/xap/1.0/mm/\"\n            xmlns:stEvt=\"http://ns.adobe.com/xap/1.0/sType/ResourceEvent#\">\n         <dc:format>application/vnd.adobe.aftereffects.preset-animation</dc:format>\n         <xmp:CreatorTool>Adobe After Effects CC 2014 (Macintosh)</xmp:CreatorTool>\n         <xmp:CreateDate>2018-01-20T12:34:50-05:00</xmp:CreateDate>\n         <xmp:MetadataDate>2018-01-20T12:34:50-05:00</xmp:MetadataDate>\n         <xmp:ModifyDate>2018-01-20T12:34:50-05:00</xmp:ModifyDate>\n         <xmpMM:InstanceID>xmp.iid:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:InstanceID>\n         <xmpMM:DocumentID>xmp.did:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:DocumentID>\n         <xmpMM:OriginalDocumentID>xmp.did:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:OriginalDocumentID>\n         <xmpMM:History>\n            <rdf:Seq>\n               <rdf:li rdf:parseType=\"Resource\">\n                  <stEvt:action>created</stEvt:action>\n                  <stEvt:instanceID>xmp.iid:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</stEvt:instanceID>\n                  <stEvt:when>2018-01-20T12:34:50-05:00</stEvt:when>\n                  <stEvt:softwareAgent>Adobe After Effects CC 2014 (Macintosh)</stEvt:softwareAgent>\n               </rdf:li>\n            </rdf:Seq>\n         </xmpMM:History>\n      </rdf:Description>\n   </rdf:RDF>\n</x:xmpmeta>\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n<?xpacket end=\"w\"?>\n",
-        template_grad5:"RIFX\x00\x00\x11\u00E2FaFXhead\x00\x00\x00\x10\x00\x00\x00\x03\x00\x00\x00W\x00\x00\x00\x01\x00a\x00\x00LIST\x00\x00\x11\u00BEbescbeso\x00\x00\x008\x00\x00\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00`\x00\x00\x18\x00\x00\x00\x00\x00\x04\x00\x01\x00\x01\x07\u0080\x048?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\u00FF\u00FF\u00FF\u00FFLIST\x00\x00\x01\u0084tdsptdot\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdpl\x00\x00\x00\x04\x00\x00\x00\x05LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Root Vectors Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\x00\x00\x00\x00tdmn\x00\x00\x00(ADBE Vector Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Vectors Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\x00\x00\x00\x02tdmn\x00\x00\x00(ADBE Vector Graphic - G-Fill\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Vector Grad Colors\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00tdsn\x00\x00\x00\x07Colors\x00\x00LIST\x00\x00\x00dtdsptdot\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdpl\x00\x00\x00\x04\x00\x00\x00\x01LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE End of path sentinel\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x0FjGCstLIST\x00\x00\x00\u00B0tdbstdsb\x00\x00\x00\x04\x00\x00\x00\x01tdsn\x00\x00\x00\x07Colors\x00\x00tdb4\x00\x00\x00|\u00DB\u0099\x00\x01\x00\x07\x00\x00\u00FF\u00FF\u00FF\u00FF\x00\x00`\x00?\x1A6\u00E2\u00EB\x1CC-?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00\x00\x01\x00\b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00cdat\x00\x00\x00\x04\x00\x00\x00\x00LIST\x00\x00\x0E\u00A6GCkyUtf8\x00\x00\x0E\u009A<?xml version='1.0'?>\n<prop.map version='4'>\n<prop.list>\n<prop.pair>\n<key>Gradient Color Data</key>\n<prop.list>\n<prop.pair>\n<key>Alpha Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n<prop.pair>\n<key>Stop-0</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[0].rampPoint\npoints[0].midPoint\npoints[0].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-1</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[1].rampPoint\npoints[1].midPoint\npoints[1].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-2</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[2].rampPoint\npoints[2].midPoint\npoints[2].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-3</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[3].rampPoint\npoints[3].midPoint\npoints[3].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-4</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[4].rampPoint\npoints[4].midPoint\npoints[4].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-5</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[4].rampPoint\npoints[4].midPoint\npoints[4].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stops Size</key>\n<int type='unsigned' size='32'>6</int>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Color Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n<prop.pair>\n<key>Stop-0</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[0].rampPoint\npoints[0].midPoint\npoints[0].color[0]\npoints[0].color[1]\npoints[0].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-1</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[1].rampPoint\npoints[1].midPoint\npoints[1].color[0]\npoints[1].color[1]\npoints[1].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-2</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[2].rampPoint\npoints[2].midPoint\npoints[2].color[0]\npoints[2].color[1]\npoints[2].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-3</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[3].rampPoint\npoints[3].midPoint\npoints[3].color[0]\npoints[3].color[1]\npoints[3].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-4</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[4].rampPoint\npoints[4].midPoint\npoints[4].color[0]\npoints[4].color[1]\npoints[4].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stops Size</key>\n<int type='unsigned' size='32'>5</int>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Gradient Colors</key>\n<string>1.0</string>\n</prop.pair>\n</prop.list>\n</prop.map>\n<?xpacket begin=\"\u00EF\u00BB\u00BF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"Adobe XMP Core 5.6-c014 79.156821, 2014/08/29-03:07:50        \">\n   <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n      <rdf:Description rdf:about=\"\"\n            xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n            xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"\n            xmlns:xmpMM=\"http://ns.adobe.com/xap/1.0/mm/\"\n            xmlns:stEvt=\"http://ns.adobe.com/xap/1.0/sType/ResourceEvent#\">\n         <dc:format>application/vnd.adobe.aftereffects.preset-animation</dc:format>\n         <xmp:CreatorTool>Adobe After Effects CC 2014 (Macintosh)</xmp:CreatorTool>\n         <xmp:CreateDate>2018-01-20T12:34:50-05:00</xmp:CreateDate>\n         <xmp:MetadataDate>2018-01-20T12:34:50-05:00</xmp:MetadataDate>\n         <xmp:ModifyDate>2018-01-20T12:34:50-05:00</xmp:ModifyDate>\n         <xmpMM:InstanceID>xmp.iid:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:InstanceID>\n         <xmpMM:DocumentID>xmp.did:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:DocumentID>\n         <xmpMM:OriginalDocumentID>xmp.did:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:OriginalDocumentID>\n         <xmpMM:History>\n            <rdf:Seq>\n               <rdf:li rdf:parseType=\"Resource\">\n                  <stEvt:action>created</stEvt:action>\n                  <stEvt:instanceID>xmp.iid:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</stEvt:instanceID>\n                  <stEvt:when>2018-01-20T12:34:50-05:00</stEvt:when>\n                  <stEvt:softwareAgent>Adobe After Effects CC 2014 (Macintosh)</stEvt:softwareAgent>\n               </rdf:li>\n            </rdf:Seq>\n         </xmpMM:History>\n      </rdf:Description>\n   </rdf:RDF>\n</x:xmpmeta>\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n<?xpacket end=\"w\"?>\n",
-        template_grad6:"RIFX\x00\x00\x13\x1CFaFXhead\x00\x00\x00\x10\x00\x00\x00\x03\x00\x00\x00W\x00\x00\x00\x01\x00`\x00\x00LIST\x00\x00\x12\u00F8bescbeso\x00\x00\x008\x00\x00\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00`\x00\x00\x18\x00\x00\x00\x00\x00\x04\x00\x01\x00\x01\x07\u0080\x048?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\u00FF\u00FF\u00FF\u00FFLIST\x00\x00\x01\u0084tdsptdot\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdpl\x00\x00\x00\x04\x00\x00\x00\x05LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Root Vectors Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\x00\x00\x00\x00tdmn\x00\x00\x00(ADBE Vector Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Vectors Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\x00\x00\x00\x02tdmn\x00\x00\x00(ADBE Vector Graphic - G-Fill\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Vector Grad Colors\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00tdsn\x00\x00\x00\x07Colors\x00\x00LIST\x00\x00\x00dtdsptdot\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdpl\x00\x00\x00\x04\x00\x00\x00\x01LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE End of path sentinel\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x10\u00A4GCstLIST\x00\x00\x00\u00B0tdbstdsb\x00\x00\x00\x04\x00\x00\x00\x01tdsn\x00\x00\x00\x07Colors\x00\x00tdb4\x00\x00\x00|\u00DB\u0099\x00\x01\x00\x07\x00\x00\u00FF\u00FF\u00FF\u00FF\x00\x00`\x00?\x1A6\u00E2\u00EB\x1CC-?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00\x00\x01\x00\b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00cdat\x00\x00\x00\x04\x00\x00\x00\x00LIST\x00\x00\x0F\u00E0GCkyUtf8\x00\x00\x0F\u00D4<?xml version='1.0'?>\n<prop.map version='4'>\n<prop.list>\n<prop.pair>\n<key>Gradient Color Data</key>\n<prop.list>\n<prop.pair>\n<key>Alpha Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n<prop.pair>\n<key>Stop-0</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[0].rampPoint\npoints[0].midPoint\npoints[0].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-1</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[1].rampPoint\npoints[1].midPoint\npoints[1].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-2</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[2].rampPoint\npoints[2].midPoint\npoints[2].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-3</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[3].rampPoint\npoints[3].midPoint\npoints[3].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-4</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[4].rampPoint\npoints[4].midPoint\npoints[4].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-5</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[5].rampPoint\npoints[5].midPoint\npoints[5].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stops Size</key>\n<int type='unsigned' size='32'>6</int>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Color Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n<prop.pair>\n<key>Stop-0</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[0].rampPoint\npoints[0].midPoint\npoints[0].color[0]\npoints[0].color[1]\npoints[0].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-1</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[1].rampPoint\npoints[1].midPoint\npoints[1].color[0]\npoints[1].color[1]\npoints[1].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-2</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[2].rampPoint\npoints[2].midPoint\npoints[2].color[0]\npoints[2].color[1]\npoints[2].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-3</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[3].rampPoint\npoints[3].midPoint\npoints[3].color[0]\npoints[3].color[1]\npoints[3].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-4</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[4].rampPoint\npoints[4].midPoint\npoints[4].color[0]\npoints[4].color[1]\npoints[4].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-5</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[5].rampPoint\npoints[5].midPoint\npoints[5].color[0]\npoints[5].color[1]\npoints[5].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stops Size</key>\n<int type='unsigned' size='32'>6</int>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Gradient Colors</key>\n<string>1.0</string>\n</prop.pair>\n</prop.list>\n</prop.map>\n<?xpacket begin=\"\u00EF\u00BB\u00BF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"Adobe XMP Core 5.6-c014 79.156821, 2014/08/29-03:07:50        \">\n   <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n      <rdf:Description rdf:about=\"\"\n            xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n            xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"\n            xmlns:xmpMM=\"http://ns.adobe.com/xap/1.0/mm/\"\n            xmlns:stEvt=\"http://ns.adobe.com/xap/1.0/sType/ResourceEvent#\">\n         <dc:format>application/vnd.adobe.aftereffects.preset-animation</dc:format>\n         <xmp:CreatorTool>Adobe After Effects CC 2014 (Macintosh)</xmp:CreatorTool>\n         <xmp:CreateDate>2018-01-20T12:34:50-05:00</xmp:CreateDate>\n         <xmp:MetadataDate>2018-01-20T12:34:50-05:00</xmp:MetadataDate>\n         <xmp:ModifyDate>2018-01-20T12:34:50-05:00</xmp:ModifyDate>\n         <xmpMM:InstanceID>xmp.iid:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:InstanceID>\n         <xmpMM:DocumentID>xmp.did:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:DocumentID>\n         <xmpMM:OriginalDocumentID>xmp.did:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:OriginalDocumentID>\n         <xmpMM:History>\n            <rdf:Seq>\n               <rdf:li rdf:parseType=\"Resource\">\n                  <stEvt:action>created</stEvt:action>\n                  <stEvt:instanceID>xmp.iid:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</stEvt:instanceID>\n                  <stEvt:when>2018-01-20T12:34:50-05:00</stEvt:when>\n                  <stEvt:softwareAgent>Adobe After Effects CC 2014 (Macintosh)</stEvt:softwareAgent>\n               </rdf:li>\n            </rdf:Seq>\n         </xmpMM:History>\n      </rdf:Description>\n   </rdf:RDF>\n</x:xmpmeta>\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n<?xpacket end=\"w\"?>\n",
-        template_grad7:"RIFX\x00\x00\x15LFaFXhead\x00\x00\x00\x10\x00\x00\x00\x03\x00\x00\x00W\x00\x00\x00\x01\x00a\x00\x00LIST\x00\x00\x15(bescbeso\x00\x00\x008\x00\x00\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00`\x00\x00\x18\x00\x00\x00\x00\x00\x04\x00\x01\x00\x01\x07\u0080\x048?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\u00FF\u00FF\u00FF\u00FFLIST\x00\x00\x01\u0084tdsptdot\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdpl\x00\x00\x00\x04\x00\x00\x00\x05LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Root Vectors Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\x00\x00\x00\x00tdmn\x00\x00\x00(ADBE Vector Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Vectors Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\x00\x00\x00\x02tdmn\x00\x00\x00(ADBE Vector Graphic - G-Fill\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Vector Grad Colors\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00tdsn\x00\x00\x00\x07Colors\x00\x00LIST\x00\x00\x00dtdsptdot\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdpl\x00\x00\x00\x04\x00\x00\x00\x01LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE End of path sentinel\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x12\u00D4GCstLIST\x00\x00\x00\u00B0tdbstdsb\x00\x00\x00\x04\x00\x00\x00\x01tdsn\x00\x00\x00\x07Colors\x00\x00tdb4\x00\x00\x00|\u00DB\u0099\x00\x01\x00\x07\x00\x00\u00FF\u00FF\u00FF\u00FF\x00\x00`\x00?\x1A6\u00E2\u00EB\x1CC-?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00\x00\x01\x00\b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00cdat\x00\x00\x00\x04\x00\x00\x00\x00LIST\x00\x00\x12\x10GCkyUtf8\x00\x00\x12\x03<?xml version='1.0'?>\n<prop.map version='4'>\n<prop.list>\n<prop.pair>\n<key>Gradient Color Data</key>\n<prop.list>\n<prop.pair>\n<key>Alpha Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n<prop.pair>\n<key>Stop-0</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[0].rampPoint\npoints[0].midPoint\npoints[0].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-1</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[1].rampPoint\npoints[1].midPoint\npoints[1].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-2</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[2].rampPoint\npoints[2].midPoint\npoints[2].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-3</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[3].rampPoint\npoints[3].midPoint\npoints[3].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-4</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[4].rampPoint\npoints[4].midPoint\npoints[4].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-5</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[5].rampPoint\npoints[5].midPoint\npoints[5].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-6</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[6].rampPoint\npoints[6].midPoint\npoints[6].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stops Size</key>\n<int type='unsigned' size='32'>7</int>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Color Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n<prop.pair>\n<key>Stop-0</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[0].rampPoint\npoints[0].midPoint\npoints[0].color[0]\npoints[0].color[1]\npoints[0].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-1</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[1].rampPoint\npoints[1].midPoint\npoints[1].color[0]\npoints[1].color[1]\npoints[1].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-2</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[2].rampPoint\npoints[2].midPoint\npoints[2].color[0]\npoints[2].color[1]\npoints[2].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-3</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[3].rampPoint\npoints[3].midPoint\npoints[3].color[0]\npoints[3].color[1]\npoints[3].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-4</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[4].rampPoint\npoints[4].midPoint\npoints[4].color[0]\npoints[4].color[1]\npoints[4].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-5</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[5].rampPoint\npoints[5].midPoint\npoints[5].color[0]\npoints[5].color[1]\npoints[5].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-6</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[6].rampPoint\npoints[6].midPoint\npoints[6].color[0]\npoints[6].color[1]\npoints[6].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stops Size</key>\n<int type='unsigned' size='32'>7</int>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Gradient Colors</key>\n<string>1.0</string>\n</prop.pair>\n</prop.list>\n</prop.map>\n<?xpacket begin=\"\u00EF\u00BB\u00BF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"Adobe XMP Core 5.6-c014 79.156821, 2014/08/29-03:07:50        \">\n   <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n      <rdf:Description rdf:about=\"\"\n            xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n            xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"\n            xmlns:xmpMM=\"http://ns.adobe.com/xap/1.0/mm/\"\n            xmlns:stEvt=\"http://ns.adobe.com/xap/1.0/sType/ResourceEvent#\">\n         <dc:format>application/vnd.adobe.aftereffects.preset-animation</dc:format>\n         <xmp:CreatorTool>Adobe After Effects CC 2014 (Macintosh)</xmp:CreatorTool>\n         <xmp:CreateDate>2018-01-20T12:34:50-05:00</xmp:CreateDate>\n         <xmp:MetadataDate>2018-01-20T12:34:50-05:00</xmp:MetadataDate>\n         <xmp:ModifyDate>2018-01-20T12:34:50-05:00</xmp:ModifyDate>\n         <xmpMM:InstanceID>xmp.iid:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:InstanceID>\n         <xmpMM:DocumentID>xmp.did:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:DocumentID>\n         <xmpMM:OriginalDocumentID>xmp.did:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:OriginalDocumentID>\n         <xmpMM:History>\n            <rdf:Seq>\n               <rdf:li rdf:parseType=\"Resource\">\n                  <stEvt:action>created</stEvt:action>\n                  <stEvt:instanceID>xmp.iid:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</stEvt:instanceID>\n                  <stEvt:when>2018-01-20T12:34:50-05:00</stEvt:when>\n                  <stEvt:softwareAgent>Adobe After Effects CC 2014 (Macintosh)</stEvt:softwareAgent>\n               </rdf:li>\n            </rdf:Seq>\n         </xmpMM:History>\n      </rdf:Description>\n   </rdf:RDF>\n</x:xmpmeta>\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n<?xpacket end=\"w\"?>\n",
-        template_grad8:"RIFX\x00\x00\x17zFaFXhead\x00\x00\x00\x10\x00\x00\x00\x03\x00\x00\x00W\x00\x00\x00\x01\x00a\x00\x00LIST\x00\x00\x17Vbescbeso\x00\x00\x008\x00\x00\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00`\x00\x00\x18\x00\x00\x00\x00\x00\x04\x00\x01\x00\x01\x07\u0080\x048?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\u00FF\u00FF\u00FF\u00FFLIST\x00\x00\x01\u0084tdsptdot\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdpl\x00\x00\x00\x04\x00\x00\x00\x05LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Root Vectors Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\x00\x00\x00\x00tdmn\x00\x00\x00(ADBE Vector Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Vectors Group\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\x00\x00\x00\x02tdmn\x00\x00\x00(ADBE Vector Graphic - G-Fill\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE Vector Grad Colors\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00tdsn\x00\x00\x00\x07Colors\x00\x00LIST\x00\x00\x00dtdsptdot\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdpl\x00\x00\x00\x04\x00\x00\x00\x01LIST\x00\x00\x00@tdsitdix\x00\x00\x00\x04\u00FF\u00FF\u00FF\u00FFtdmn\x00\x00\x00(ADBE End of path sentinel\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00LIST\x00\x00\x15\x02GCstLIST\x00\x00\x00\u00B0tdbstdsb\x00\x00\x00\x04\x00\x00\x00\x01tdsn\x00\x00\x00\x07Colors\x00\x00tdb4\x00\x00\x00|\u00DB\u0099\x00\x01\x00\x07\x00\x00\u00FF\u00FF\u00FF\u00FF\x00\x00`\x00?\x1A6\u00E2\u00EB\x1CC-?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00?\u00F0\x00\x00\x00\x00\x00\x00\x00\x01\x00\b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00cdat\x00\x00\x00\x04\x00\x00\x00\x00LIST\x00\x00\x14>GCkyUtf8\x00\x00\x142<?xml version='1.0'?>\n<prop.map version='4'>\n<prop.list>\n<prop.pair>\n<key>Gradient Color Data</key>\n<prop.list>\n<prop.pair>\n<key>Alpha Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n<prop.pair>\n<key>Stop-0</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[0].rampPoint\npoints[0].midPoint\npoints[0].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-1</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[1].rampPoint\npoints[1].midPoint\npoints[1].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-2</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[2].rampPoint\npoints[2].midPoint\npoints[2].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-3</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[3].rampPoint\npoints[3].midPoint\npoints[3].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-4</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[4].rampPoint\npoints[4].midPoint\npoints[4].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-5</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[5].rampPoint\npoints[5].midPoint\npoints[5].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-6</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[6].rampPoint\npoints[6].midPoint\npoints[6].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-7</key>\n<prop.list>\n<prop.pair>\n<key>Stops Alpha</key>\n<array>\n<array.type><float/></array.type>\npoints[7].rampPoint\npoints[7].midPoint\npoints[7].opacity\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stops Size</key>\n<int type='unsigned' size='32'>8</int>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Color Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n<prop.pair>\n<key>Stop-0</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[0].rampPoint\npoints[0].midPoint\npoints[0].color[0]\npoints[0].color[1]\npoints[0].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-1</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[1].rampPoint\npoints[1].midPoint\npoints[1].color[0]\npoints[1].color[1]\npoints[1].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-2</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[2].rampPoint\npoints[2].midPoint\npoints[2].color[0]\npoints[2].color[1]\npoints[2].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-3</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[3].rampPoint\npoints[3].midPoint\npoints[3].color[0]\npoints[3].color[1]\npoints[3].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-4</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[4].rampPoint\npoints[4].midPoint\npoints[4].color[0]\npoints[4].color[1]\npoints[4].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-5</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[5].rampPoint\npoints[5].midPoint\npoints[5].color[0]\npoints[5].color[1]\npoints[5].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-6</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[6].rampPoint\npoints[6].midPoint\npoints[6].color[0]\npoints[6].color[1]\npoints[6].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stop-7</key>\n<prop.list>\n<prop.pair>\n<key>Stops Color</key>\n<array>\n<array.type><float/></array.type>\npoints[7].rampPoint\npoints[7].midPoint\npoints[7].color[0]\npoints[7].color[1]\npoints[7].color[2]\n<float>1</float>\n</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Stops Size</key>\n<int type='unsigned' size='32'>8</int>\n</prop.pair>\n</prop.list>\n</prop.pair>\n</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Gradient Colors</key>\n<string>1.0</string>\n</prop.pair>\n</prop.list>\n</prop.map>\n<?xpacket begin=\"\u00EF\u00BB\u00BF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"Adobe XMP Core 5.6-c014 79.156821, 2014/08/29-03:07:50        \">\n   <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n      <rdf:Description rdf:about=\"\"\n            xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n            xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"\n            xmlns:xmpMM=\"http://ns.adobe.com/xap/1.0/mm/\"\n            xmlns:stEvt=\"http://ns.adobe.com/xap/1.0/sType/ResourceEvent#\">\n         <dc:format>application/vnd.adobe.aftereffects.preset-animation</dc:format>\n         <xmp:CreatorTool>Adobe After Effects CC 2014 (Macintosh)</xmp:CreatorTool>\n         <xmp:CreateDate>2018-01-20T12:34:50-05:00</xmp:CreateDate>\n         <xmp:MetadataDate>2018-01-20T12:34:50-05:00</xmp:MetadataDate>\n         <xmp:ModifyDate>2018-01-20T12:34:50-05:00</xmp:ModifyDate>\n         <xmpMM:InstanceID>xmp.iid:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:InstanceID>\n         <xmpMM:DocumentID>xmp.did:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:DocumentID>\n         <xmpMM:OriginalDocumentID>xmp.did:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</xmpMM:OriginalDocumentID>\n         <xmpMM:History>\n            <rdf:Seq>\n               <rdf:li rdf:parseType=\"Resource\">\n                  <stEvt:action>created</stEvt:action>\n                  <stEvt:instanceID>xmp.iid:9f2e7e7b-65a7-49aa-beb9-509e3e6907bd</stEvt:instanceID>\n                  <stEvt:when>2018-01-20T12:34:50-05:00</stEvt:when>\n                  <stEvt:softwareAgent>Adobe After Effects CC 2014 (Macintosh)</stEvt:softwareAgent>\n               </rdf:li>\n            </rdf:Seq>\n         </xmpMM:History>\n      </rdf:Description>\n   </rdf:RDF>\n</x:xmpmeta>\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n<?xpacket end=\"w\"?>\n",
-    };
+//// set the colors of a gradient fill or stroke
+// After Effects can't set gradient colors from a script, so this writes a
+// one-off animation preset holding only the colors and applies it to the
+// property. Call it last: applying a preset can leave references to the
+// property stale.
+function applyGradientColors(gradProp, gradient) {
+    var stops = gradientStops(gradient);
+    if (stops == null) { return; }
 
-    try {
-
-    /// pick the right string for the number of gradient colors (up to 8)
-    var gradLength = element.gradient.length;
-
-    if (gradLength == 2) {
-        fileString = presetFiles.template_grad2;
-    }
-    if (gradLength == 3) {
-        fileString = presetFiles.template_grad3;
-    }
-    if (gradLength == 4) {
-        fileString = presetFiles.template_grad4;
-    }
-    if (gradLength == 5) {
-        fileString = presetFiles.template_grad5;
-    }
-    if (gradLength == 6) {
-        fileString = presetFiles.template_grad6;
-    }
-    if (gradLength == 7) {
-        fileString = presetFiles.template_grad7;
-    }
-    if (gradLength > 7) {
-        fileString = presetFiles.template_grad8;
-    }
-    /// create ffx file
-    var tempFile = createFile(fileString, 'grad.ffx', element);
-
-    /// unable to create the file
-    if (tempFile == null) {
+    var presetFile = createFile(gradientPreset(gradientPresetPath(gradProp), stops), 'grad.ffx');
+    if (presetFile == null) {
         returnMessage.push(5);		// 'Can't save preset file'
         return;
     }
 
-    /// select properties and apply ffx
-    fill = thisComp.selectedProperties[0];
-    var layer = fill.propertyGroup(fill.propertyDepth);
-    fill.selected = true;
-
-    layer.applyPreset(tempFile);
+    // the preset goes to the selected property, and the path inside it points
+    // at this same property, so it lands here however AE resolves it
+    var layer = gradProp.propertyGroup(gradProp.propertyDepth);
+    ae_deselectProps();
+    gradProp.selected = true;
+    layer.applyPreset(presetFile);
+    ae_deselectProps();
     layer.selected = false;
+}
 
+//// gradient stops sorted, in range and at least two of them
+function gradientStops(gradient) {
+    var points = (gradient && gradient.points) ? gradient.points : [];
+    var stops = [];
+    for (var i = 0; i < points.length; i++) {
+        var color = points[i].color || [0, 0, 0, 1];
+        stops.push({
+            rampPoint: unitValue(points[i].rampPoint, 0),
+            midPoint: unitValue(points[i].midPoint, 0.5),
+            opacity: unitValue(points[i].opacity, 1),
+            color: [unitValue(color[0], 0), unitValue(color[1], 0), unitValue(color[2], 0)]
+        });
+    }
+    if (stops.length < 1) { return null; }
+    stops.sort(function (a, b) { return a.rampPoint - b.rampPoint; });
 
-    } catch (e) {
-        alert(e.toString() + "\nError on line: " + e.line.toString());
+    // AE needs two stops, and one stop is just a solid color
+    if (stops.length == 1) {
+        stops.push({ rampPoint: 1, midPoint: 0.5, opacity: stops[0].opacity, color: stops[0].color });
+        stops[0].rampPoint = 0;
+    }
+    return stops;
+
+    function unitValue(value, fallback) {
+        value = parseFloat(value);
+        if (isNaN(value)) { return fallback; }
+        return Math.min(1, Math.max(0, value));
+    }
+}
+
+//// path from the layer down to a gradient's colors, the way a preset records it
+function gradientPresetPath(gradProp) {
+    // children of indexed groups (shape contents) are recorded by position,
+    // everything else as -1
+    var path = [[-1, 'ADBE Vector Grad Colors']];
+    for (var prop = gradProp; prop.propertyDepth > 0; prop = prop.parentProperty) {
+        var parent = prop.parentProperty;
+        var indexed = (parent.propertyDepth > 0 && parent.propertyType == PropertyType.INDEXED_GROUP);
+        path.unshift([indexed ? prop.propertyIndex - 1 : -1, prop.matchName]);
+    }
+    return path;
+}
+
+//// build the .ffx binary for a gradient color preset
+// An .ffx is a RIFX file: tagged chunks with big-endian sizes. Only the
+// property path and the color XML change, the rest is copied from a preset
+// saved out of After Effects.
+function gradientPreset(path, stops) {
+    var head = "\x00\x00\x00\x03\x00\x00\x00W\x00\x00\x00\x01\x00\x00\x00\x00";
+    var beso = "\x00\x00\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00`\x00\x00\x18\x00\x00\x00\x00\x00\x04\x00\x01\x00\x01\x07\x80\x048?\xF0\x00\x00\x00\x00\x00\x00?\xF0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xFF\xFF\xFF\xFF";
+    var tdb4 = "\xDB\x99\x00\x01\x00\x07\x00\x00\xFF\xFF\xFF\xFF\x00\x00`\x00?\x1A6\xE2\xEB\x1CC-?\xF0\x00\x00\x00\x00\x00\x00?\xF0\x00\x00\x00\x00\x00\x00?\xF0\x00\x00\x00\x00\x00\x00?\xF0\x00\x00\x00\x00\x00\x00\x00\x01\x00\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
+    var xmp = '<?xpacket begin="\xEF\xBB\xBF" id="W5M0MpCehiHzreSzNTczkc9d"?>\n' +
+        '<x:xmpmeta xmlns:x="adobe:ns:meta/">\n<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n' +
+        '<rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/">\n' +
+        '<dc:format>application/vnd.adobe.aftereffects.preset-animation</dc:format>\n' +
+        '</rdf:Description>\n</rdf:RDF>\n</x:xmpmeta>\n<?xpacket end="w"?>\n';
+
+    var besc = chunk('beso', beso) +
+        propertyPath(path) +
+        chunk('tdsn', 'Colors\x00') +
+        propertyPath([[-1, 'ADBE End of path sentinel']]) +
+        list('GCst',
+            list('tdbs', chunk('tdsb', uint32(1)) + chunk('tdsn', 'Colors\x00') + chunk('tdb4', tdb4) + chunk('cdat', uint32(0))) +
+            list('GCky', chunk('Utf8', gradientXml(stops))));
+    var body = 'FaFX' + chunk('head', head) + list('besc', besc);
+
+    return 'RIFX' + uint32(body.length) + body + xmp;
+
+    function uint32(n) {
+        return String.fromCharCode((n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255);
+    }
+    // chunks with an odd size get a pad byte that the size doesn't count
+    function chunk(tag, data) {
+        return tag + uint32(data.length) + data + ((data.length % 2) ? '\x00' : '');
+    }
+    function list(type, data) {
+        return chunk('LIST', type + data);
+    }
+    function propertyPath(entries) {
+        var data = chunk('tdot', uint32(-1)) + chunk('tdpl', uint32(entries.length));
+        for (var i = 0; i < entries.length; i++) {
+            var matchName = entries[i][1];
+            while (matchName.length < 40) { matchName += '\x00'; }
+            data += list('tdsi', chunk('tdix', uint32(entries[i][0])) + chunk('tdmn', matchName));
+        }
+        return list('tdsp', data);
+    }
+}
+
+//// gradient color XML, alpha and color stops kept separately like AE does
+function gradientXml(stops) {
+    var alphaStops = '';
+    var colorStops = '';
+    for (var i = 0; i < stops.length; i++) {
+        var s = stops[i];
+        alphaStops += stopXml(i, 'Stops Alpha', [s.rampPoint, s.midPoint, s.opacity], '');
+        colorStops += stopXml(i, 'Stops Color', [s.rampPoint, s.midPoint, s.color[0], s.color[1], s.color[2]], '<float>1</float>\n');
+    }
+    var stopCount = '<prop.pair>\n<key>Stops Size</key>\n<int type=\'unsigned\' size=\'32\'>' + stops.length + '</int>\n</prop.pair>\n';
+
+    return '<?xml version=\'1.0\'?>\n<prop.map version=\'4\'>\n<prop.list>\n<prop.pair>\n<key>Gradient Color Data</key>\n<prop.list>\n' +
+        '<prop.pair>\n<key>Alpha Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n' + alphaStops + '</prop.list>\n</prop.pair>\n' + stopCount + '</prop.list>\n</prop.pair>\n' +
+        '<prop.pair>\n<key>Color Stops</key>\n<prop.list>\n<prop.pair>\n<key>Stops List</key>\n<prop.list>\n' + colorStops + '</prop.list>\n</prop.pair>\n' + stopCount + '</prop.list>\n</prop.pair>\n' +
+        '</prop.list>\n</prop.pair>\n<prop.pair>\n<key>Gradient Colors</key>\n<string>1.0</string>\n</prop.pair>\n</prop.list>\n</prop.map>\n';
+
+    function stopXml(index, key, values, tail) {
+        var floats = '';
+        for (var j = 0; j < values.length; j++) {
+            floats += '<float>' + values[j].toFixed(8) + '</float>\n';
+        }
+        return '<prop.pair>\n<key>Stop-' + index + '</key>\n<prop.list>\n<prop.pair>\n<key>' + key + '</key>\n<array>\n<array.type><float/></array.type>\n' +
+            floats + tail + '</array>\n</prop.pair>\n</prop.list>\n</prop.pair>\n';
     }
 }
 
@@ -1867,7 +1932,7 @@ function isAllowWriteFiles() {
 }
 
 //// create a file on disk from binary data
-function createFile(str, filename, element) {
+function createFile(str, filename) {
     /// check if scripts are allowed to write files
     if (!(isAllowWriteFiles()))  {
         alert ('In order to make ' + scriptName + ' work, you need to enable little preference in After Effects: \n\nAllow Scripts to Write Files and Access Network\n\nCheck that box and we\'ll be in business.');
@@ -1879,23 +1944,11 @@ function createFile(str, filename, element) {
         if (!isAllowWriteFiles()) { return null };
     }
 
-    var binaryString = '';
-    var lines = str.split('\n');
-    /// go through each line of the binary string
-    for (var i = 0; i < lines.length; i++) {
-        line = lines[i];
-        // find and replace with color data
-        if (line.search(/points/) != -1) {
-            str = eval('element.gradient.' + line.toString()).toFixed(8);
-            line = '<float>' + str + '</float>';
-        }
-        binaryString += (line + '\n');
-    }
     /// create file
     var exportFile = new File(ffxFolder + '/' + filename);
         exportFile.encoding = 'BINARY';
         exportFile.open( 'w' );
-        exportFile.write( binaryString );
+        exportFile.write( str );
         exportFile.close();
 
     return exportFile;
@@ -2250,9 +2303,11 @@ function deleteGroupLayers() {
 
 //// deselect everything within a comp
 function ae_deselectProps() {
-    var propLength = thisComp.selectedProperties.length;
-    for (var i = 0; i < propLength; i++) {
-        thisComp.selectedProperties[0].selected = false;
+    // deselecting a group can take its children with it, so work through a
+    // snapshot instead of re-reading index 0 a fixed number of times
+    var selected = thisComp.selectedProperties;
+    for (var i = selected.length - 1; i >= 0; i--) {
+        try { selected[i].selected = false; } catch (e) {}
     }
 }
 
