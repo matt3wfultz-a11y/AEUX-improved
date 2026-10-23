@@ -397,7 +397,7 @@ function nodeToObj (nodes) {
                 let hasImageFill = false
                 for (const i in element) {
                     const fill = element[i];                    
-                    if (fill.type == 'IMAGE') {
+                    if (fill.type == 'IMAGE' && fill.visible !== false) {     // a hidden image fill draws nothing
                         hasImageFill = true
                         obj['rasterize'] = true
                         // console.log('image', element);
