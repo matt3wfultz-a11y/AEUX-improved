@@ -15,6 +15,7 @@ var clippingMask = null;
 var thisComp = null;
 var compMult = 1;
 var maskLayer = {};
+var figmaMaskSources = [];
 var returnMessage = [];
 var maskPosition = [0, 0];
     var folderPath, compName, importVersion;
@@ -78,6 +79,7 @@ function buildLayers(compObj) {
     /// reset variables
     importVersion = compObj.layerData[0].aeuxVersion
     maskLayer = {}
+    figmaMaskSources = []
 
     if (aeuxVersion < importVersion) {
         downloadUpdateDialog()
@@ -127,6 +129,11 @@ function buildLayers(compObj) {
 
     // do the filtering of each layer type and build layers
     filterTypes(importedLayerCode);
+
+    for (var m = 0; m < figmaMaskSources.length; m++) {
+        try { figmaMaskSources[m].remove(); } catch (e) {}
+    }
+    figmaMaskSources = [];
 
     tempComp.remove();
     if (thisComp) {
@@ -1602,13 +1609,12 @@ function setMask(currentLayer, layerData) {
             newMask.moveBefore(currentLayer);
             newMask.effectsActive = false;
             newMask.enabled = false;
-            newMask.parent = maskLayer[layerID];
+            // the Figma mask is removed after the build, so there's nothing to follow
+            if (hostApp != 'Figma') { newMask.parent = maskLayer[layerID]; }
             newMask.shy = true;
             newMask.name = '\u25A8 ' + newMask.name;
             try { newMask(2).addProperty('ADBE Vector Graphic - Fill'); } catch (e) {}		// if not a shape layer
             // newMask.locked = true;
-
-        if (hostApp == 'Figma') { maskLayer[layerID].remove() }     // figma cant have the underlying mask layer visible so delete it
 
         currentLayer.trackMatteType = TrackMatteType.ALPHA;
         } catch (e) {}
@@ -1624,6 +1630,9 @@ function setMask(currentLayer, layerData) {
     if (layerData.isMask) {
         maskLayer[layerID] = currentLayer;
         maskPosition = currentLayer('ADBE Transform Group')('ADBE Position').value;
+        // Figma never draws the mask shape itself. It stays until the build is
+        // done because every layer above it gets a matte copied from it.
+        if (hostApp == 'Figma') { figmaMaskSources.push(currentLayer); }
     }
 
     // resize masked images from their default frame size

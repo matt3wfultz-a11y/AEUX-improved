@@ -54,6 +54,7 @@ var AEUX = (function () {
     var thisComp = null;
     var compMult = 1;
     var maskLayer = {};
+    var figmaMaskSources = [];
     var returnMessage = [];
     var maskPosition = [0, 0];
     var folderPath, compName, importVersion;
@@ -93,6 +94,7 @@ var AEUX = (function () {
         try {
             importVersion = compObj.layerData[0].aeuxVersion;
             maskLayer = {};
+            figmaMaskSources = [];
             if (aeuxVersion < importVersion) {
                 downloadUpdateDialog();
                 return JSON.stringify(null);
@@ -126,6 +128,13 @@ var AEUX = (function () {
             var tempComp = app.project.items.addComp('LOADING...', 500, 500, 1, 1, 1);
             tempComp.openInViewer();
             filterTypes(importedLayerCode);
+            for (var m = 0; m < figmaMaskSources.length; m++) {
+                try {
+                    figmaMaskSources[m].remove();
+                }
+                catch (e) { }
+            }
+            figmaMaskSources = [];
             tempComp.remove();
             if (thisComp) {
                 thisComp.openInViewer();
@@ -1069,16 +1078,15 @@ var AEUX = (function () {
                 newMask.moveBefore(currentLayer);
                 newMask.effectsActive = false;
                 newMask.enabled = false;
-                newMask.parent = maskLayer[layerID];
+                if (hostApp != 'Figma') {
+                    newMask.parent = maskLayer[layerID];
+                }
                 newMask.shy = true;
                 newMask.name = '\u25A8 ' + newMask.name;
                 try {
                     newMask(2).addProperty('ADBE Vector Graphic - Fill');
                 }
                 catch (e) { }
-                if (hostApp == 'Figma') {
-                    maskLayer[layerID].remove();
-                }
                 currentLayer.trackMatteType = TrackMatteType.ALPHA;
             }
             catch (e) { }
@@ -1090,6 +1098,9 @@ var AEUX = (function () {
         if (layerData.isMask) {
             maskLayer[layerID] = currentLayer;
             maskPosition = currentLayer('ADBE Transform Group')('ADBE Position').value;
+            if (hostApp == 'Figma') {
+                figmaMaskSources.push(currentLayer);
+            }
         }
         try {
             if (hostApp == 'Figma' && layerData.type == 'Image') {
